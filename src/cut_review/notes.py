@@ -21,6 +21,33 @@ def fmt_t(t: float | None) -> str:
     return f"{int(m)}:{s:04.1f}"
 
 
+def region_of(note: dict) -> tuple[float, float, float, float] | None:
+    """A note's frame region as (x, y, w, h), fractions of the frame clamped to it, or None."""
+    r = note.get("region")
+    if not isinstance(r, dict):
+        return None
+    try:
+        x, y, w, h = (min(1.0, max(0.0, float(r[k]))) for k in ("x", "y", "w", "h"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    w, h = min(w, 1 - x), min(h, 1 - y)
+    return (x, y, w, h) if w > 0 and h > 0 else None
+
+
+def where(note: dict) -> str:
+    """Where a note points: set item, time range, time or whole cut, plus its frame region."""
+    if note.get("item"):
+        at = note["item"]
+    elif note.get("t") is not None and note.get("tEnd") is not None:
+        at = f"{fmt_t(note['t'])}–{fmt_t(note['tEnd'])}"
+    else:
+        at = fmt_t(note.get("t"))
+    r = region_of(note)
+    if r:
+        at += " [region x {:.0%} y {:.0%}, {:.0%}×{:.0%}]".format(*r)
+    return at
+
+
 def _normalize(obj: dict, fallback_id: str) -> dict | None:
     """One exported document → a flat note with `id` and `dbVersion`.
 
@@ -100,8 +127,7 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
         ver = room.state["records"].get(f"cuts/{key}", room.state["records"].get(f"sets/{key}", {})).get("confirmed", {}).get("version")
         lines.append(f"## {key}: {titles.get(key, '(not in room.json)')}" + (f" (now v{ver})" if ver else ""))
         for n in mine:
-            where = n.get("item") or fmt_t(n.get("t"))
-            lines.append(f"- [{n.get('status')}] {where} · {n['text']}  (id {n['id']}, written on v{n.get('version', 1)})")
+            lines.append(f"- [{n.get('status')}] {where(n)} · {n['text']}  (id {n['id']}, written on v{n.get('version', 1)})")
             if n.get("reply"):
                 lines.append(f"  reply: {n['reply']}")
         lines.append("")
@@ -111,7 +137,11 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
 
 
 def extract_frames(room: Room, notes: list[dict], width: int = 540) -> list[tuple[dict, Path]]:
-    """The frame behind every open timed note, as PNGs in .cut-review/frames/. Needs ffmpeg."""
+    """The frames behind every open note on a cut, as PNGs in .cut-review/frames/. Needs ffmpeg.
+
+    A timed note gives its frame; a range note gives its first and last frame; a note with a region has the region
+    boxed in red (a whole-cut note with a region uses the first frame).
+    """
     if not shutil.which("ffmpeg"):
         raise RoomError("ffmpeg is not on PATH")
     files = {c["key"]: room.abspath(c["file"]) for c in room.manifest.get("cuts", [])}
@@ -119,12 +149,21 @@ def extract_frames(room: Room, notes: list[dict], width: int = 540) -> list[tupl
     outdir.mkdir(parents=True, exist_ok=True)
     done = []
     for n in notes:
-        if n.get("status") != "open" or n.get("t") is None or n["cut"] not in files:
+        r = region_of(n)
+        if n.get("status") != "open" or n["cut"] not in files or (n.get("t") is None and not r):
             continue
-        dst = outdir / f"{n['cut']}_{float(n['t']):07.2f}_{n['id']}.png"
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(n["t"]), "-i", str(files[n["cut"]]),
-                        "-frames:v", "1", "-vf", f"scale={width}:-2", str(dst)], check=True, timeout=60)
-        done.append((n, dst))
+        t = float(n.get("t") or 0)
+        shots = [(t, "")]
+        if n.get("tEnd") is not None and float(n["tEnd"]) > t:
+            shots = [(t, "_start"), (float(n["tEnd"]), "_end")]
+        vf = f"scale={width}:-2"
+        if r:
+            vf = "drawbox=x=iw*{}:y=ih*{}:w=iw*{}:h=ih*{}:color=red@0.9:t=6,".format(*r) + vf
+        for at, suffix in shots:
+            dst = outdir / f"{n['cut']}_{at:07.2f}_{n['id']}{suffix}.png"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(files[n["cut"]]),
+                            "-frames:v", "1", "-vf", vf, str(dst)], check=True, timeout=60)
+            done.append((n, dst))
     return done
 
 

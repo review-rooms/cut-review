@@ -47,7 +47,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
 4. `cut-review build` writes every record and prints `ArtifactData` `batch` writes (`writes` = the printed list,
    `url` = the room). Save the result to a file and run `cut-review written <file>`.
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
-   frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays.
+   frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; drag the timeline (or `i` / `o`)
+   for a note on a time range, and "Draw region" (`r`) to box the part of the frame a note is about.
 
 ## Apply the owner's notes
 
@@ -55,9 +56,11 @@ the room project next to the work that renders the videos; never commit `.cut-re
    `out_dir: "<room>/.cut-review/export"`. The files hold only the note bodies; the tool's result text names each
    note's database version, so save that text to `.cut-review/export-result.txt`. Then
    `cut-review notes .cut-review/export --result .cut-review/export-result.txt` prints the to-do list grouped by
-   cut, with timecodes and note ids, and keeps each note's database version for `fix`.
-2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/`. Read the images
-   before changing anything, so you fix what the owner pointed at.
+   cut, with timecodes (`0:05.0–0:09.5` for a range), regions (`[region x 18% y 23%, 47%×21%]`, fractions of the
+   frame) and note ids, and keeps each note's database version for `fix`.
+2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame
+   of a range; a note's region is boxed in red). Read the images before changing anything, so you fix what the
+   owner pointed at: the whole range, and inside the box.
 3. Change the source (render script, edit, assets) and re-render the affected cuts. Check a frame or two of the
    new render the same way.
 4. `cut-review uploads` → `Artifact` upload → `cut-review assets <file>` (only changed files are listed).

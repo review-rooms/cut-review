@@ -88,16 +88,25 @@ button { cursor: pointer; }
 
 .work { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
 .stagecol { display: flex; flex-direction: column; gap: 10px; width: fit-content; max-width: 100%; }
-.stage { background: var(--stage); border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
+.stage { position: relative; background: var(--stage); border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
 .stage video { display: block; max-width: 100%; background: var(--stage); }
 .stage.tall video { height: min(74vh, 780px); }
 .stage.wide video { width: min(62vw, 900px); }
-.track { position: relative; height: 26px; border-radius: 6px; background: var(--sunk); cursor: pointer; }
+.regions { position: absolute; pointer-events: none; }
+.regions.drawing { pointer-events: auto; cursor: crosshair; touch-action: none; outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(0, 0, 0, 0.18); }
+.box { position: absolute; border: 2px solid var(--bad); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); }
+.box.fixed { border-color: var(--good); }
+.box.draft { border: 2px dashed #ffffff; background: rgba(255, 255, 255, 0.12); }
+.box .lbl { position: absolute; top: 0; left: 0; padding: 1px 5px; font: 600 11px/1.3 var(--mono); color: #ffffff; background: var(--bad); border-radius: 0 0 3px 0; white-space: nowrap; }
+.box.fixed .lbl { background: var(--good); }
+.track { position: relative; height: 26px; border-radius: 6px; background: var(--sunk); cursor: pointer; touch-action: none; }
+.track .sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 22%, transparent); pointer-events: none; }
 .track .fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 6px; pointer-events: none; }
 .track .head-line { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); pointer-events: none; }
 .mark { position: absolute; top: 4px; width: 12px; height: 18px; margin-left: -6px; border-radius: 3px; border: 0; padding: 0; background: var(--bad); }
 .mark.fixed { background: var(--good); }
 .mark.resolved, .mark.wontfix { background: var(--muted); opacity: 0.6; }
+.mark.range { top: 8px; height: 10px; min-width: 12px; margin-left: 0; opacity: 0.75; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .controls button { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 10px; font-size: 13px; font-weight: 600; }
 .controls button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
@@ -114,6 +123,7 @@ button { cursor: pointer; }
 .primary { margin-left: auto; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; font-weight: 700; }
 .primary:disabled { opacity: 0.5; cursor: default; }
 .ghost { border: 1px solid var(--line); background: none; border-radius: 7px; padding: 4px 9px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.ghost[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 .notes { display: flex; flex-direction: column; gap: 8px; }
 .note { border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -121,6 +131,7 @@ button { cursor: pointer; }
 .note.resolved, .note.wontfix { border-left-color: var(--line); opacity: 0.75; }
 .note .top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .note .t { border: 0; background: var(--sunk); border-radius: 6px; padding: 2px 7px; font-size: 12px; }
+.note.focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .pill { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; }
 .pill.open { background: var(--bad-soft); color: var(--bad); }
 .pill.fixed { background: var(--good-soft); color: var(--good); }
@@ -206,7 +217,7 @@ button { cursor: pointer; }
 
     <section class="work" id="workView">
       <div class="stagecol" id="stagecol">
-        <div class="stage tall" id="stage"><video id="vid" playsinline controls preload="metadata"></video></div>
+        <div class="stage tall" id="stage"><video id="vid" playsinline controls preload="metadata"></video><div class="regions" id="regions" aria-hidden="true"></div></div>
         <div class="track" id="track" aria-label="Notes on the timeline"><div class="fill" id="fill"></div><div class="head-line" id="playhead"></div></div>
         <div class="controls">
           <button id="b-back" title="Back one frame (,)">−1f</button>
@@ -217,7 +228,7 @@ button { cursor: pointer; }
           <button id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
           <span class="tc mono" id="tc">0:00.0 / 0:00.0</span>
         </div>
-        <p class="kbd">Keys: k play · , . frame · n write a note at this frame</p>
+        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o range start and end · r draw a region · drag the timeline for a range</p>
       </div>
 
       <div class="side2">
@@ -226,7 +237,11 @@ button { cursor: pointer; }
           <textarea id="noteText" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
           <div class="crow">
             <span class="stamp mono" id="stampLbl">at 0:00.0</span>
-            <button class="ghost" id="b-restamp" title="Use the frame the video is on now">Use current frame</button>
+            <button class="ghost" id="b-restamp" title="Use the frame the video is on now (i)">Use current frame</button>
+            <button class="ghost" id="b-end" title="End a time range at the frame the video is on now (o)">End here</button>
+            <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r)">Draw region</button>
+            <button class="ghost" id="b-unrange" hidden title="Make this a note on a single frame again">✕ range</button>
+            <button class="ghost" id="b-unregion" hidden title="Remove the region">✕ region</button>
             <label id="generalLbl"><input type="checkbox" id="general"> Whole cut</label>
             <select id="itemSel" hidden aria-label="Item"></select>
             <button class="primary" id="b-add" disabled>Add note</button>
@@ -258,7 +273,8 @@ button { cursor: pointer; }
   const $ = (id) => document.getElementById(id);
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
-              sel: null, filter: "active", stampT: 0, stampLocked: false, item: null };
+              sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
+              stampEnd: null, region: null, drawing: false, draft: null, focus: null };
   const vid = $("vid");
 
   const fmt = (t) => {
@@ -317,7 +333,8 @@ button { cursor: pointer; }
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
     $("generalLbl").hidden = isSet;
-    $("b-restamp").hidden = isSet;
+    for (const id of ["b-restamp", "b-end", "b-region"]) $(id).hidden = isSet;
+    if (changed) { S.stampEnd = null; S.region = null; S.focus = null; setDrawing(false); }
     $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
     if (changed) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; S.item = null; }
     $("title").textContent = e.title || e.key;
@@ -389,10 +406,12 @@ button { cursor: pointer; }
     $("playhead").style.left = (100 * t / d) + "%";
     $("b-play").textContent = vid.paused ? "Play" : "Pause";
     for (const tr of $("script").querySelectorAll("tr")) tr.classList.toggle("now", t >= +tr.dataset.from && t < +tr.dataset.to);
-    if (!S.stampLocked) { S.stampT = t; updateStamp(); }
+    if (!S.stampLocked && S.stampEnd == null) { S.stampT = t; updateStamp(); }
+    renderRegions();
   }
   for (const ev of ["timeupdate", "seeked", "play", "pause"]) vid.addEventListener(ev, tick);
   vid.addEventListener("loadedmetadata", () => { tick(); renderMarks(); });
+  if (window.ResizeObserver) new ResizeObserver(() => renderRegions()).observe(vid);
   $("b-play").onclick = () => (vid.paused ? vid.play().catch(() => {}) : vid.pause());
   $("b-back").onclick = () => seek((vid.currentTime || 0) - 1 / FPS, true);
   $("b-fwd").onclick = () => seek((vid.currentTime || 0) + 1 / FPS, true);
@@ -401,35 +420,79 @@ button { cursor: pointer; }
     vid.playbackRate = +b.dataset.rate;
     document.querySelectorAll("[data-rate]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   };
-  $("track").addEventListener("click", (ev) => {
-    if (ev.target.classList.contains("mark")) return;
-    const r = $("track").getBoundingClientRect();
-    seek(dur() * (ev.clientX - r.left) / r.width, true);
+  const tAt = (x) => { const r = $("track").getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)) * dur(); };
+  let drag = null;
+  $("track").addEventListener("pointerdown", (ev) => {
+    if (ev.target.classList.contains("mark") || ev.button > 0) return;
+    drag = { x: ev.clientX, moved: false };
+    $("track").setPointerCapture(ev.pointerId);
   });
+  $("track").addEventListener("pointermove", (ev) => {
+    if (!drag || (!drag.moved && Math.abs(ev.clientX - drag.x) < 5)) return;
+    drag.moved = true;
+    const a = tAt(drag.x), b = tAt(ev.clientX);
+    S.stampT = Math.min(a, b); S.stampEnd = Math.max(a, b); S.stampLocked = true; $("general").checked = false;
+    seek(b, true); updateStamp(); renderMarks();
+  });
+  const endDrag = (ev) => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (!d.moved) { seek(tAt(ev.clientX), true); return; }
+    if (S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
+    seek(S.stampT, true); updateStamp(); renderMarks();
+  };
+  $("track").addEventListener("pointerup", endDrag);
+  $("track").addEventListener("pointercancel", () => { drag = null; });
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && S.drawing) { ev.preventDefault(); setDrawing(false); return; }
     const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || "");
     if (typing || entryOf(S.sel)?.kind !== "cut" || ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (ev.key === "k") { ev.preventDefault(); $("b-play").click(); }
     else if (ev.key === ",") { ev.preventDefault(); $("b-back").click(); }
     else if (ev.key === ".") { ev.preventDefault(); $("b-fwd").click(); }
     else if (ev.key === "n") { ev.preventDefault(); vid.pause(); $("noteText").focus(); }
+    else if (ev.key === "i") { ev.preventDefault(); $("b-restamp").click(); }
+    else if (ev.key === "o") { ev.preventDefault(); $("b-end").click(); }
+    else if (ev.key === "r") { ev.preventDefault(); $("b-region").click(); }
   });
 
   // ---------- composer
   function updateStamp() {
     const isSet = entryOf(S.sel)?.kind === "set";
-    $("stampLbl").textContent = isSet ? "on item" : $("general").checked ? "whole cut" : "at " + fmt(S.stampT);
+    if (S.stampEnd != null && S.stampEnd < S.stampT) [S.stampT, S.stampEnd] = [S.stampEnd, S.stampT];
+    const ranged = !isSet && !$("general").checked && S.stampEnd != null;
+    $("stampLbl").textContent = (isSet ? "on item" : $("general").checked ? "whole cut"
+      : ranged ? fmt(S.stampT) + " → " + fmt(S.stampEnd) : "at " + fmt(S.stampT)) + (!isSet && S.region ? " · region" : "");
+    $("b-unrange").hidden = !ranged;
+    $("b-unregion").hidden = isSet || !S.region;
+    $("b-region").setAttribute("aria-pressed", String(S.drawing));
     $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim();
   }
   $("noteText").addEventListener("focus", () => {
     if (entryOf(S.sel)?.kind !== "cut") return;
     if (!vid.paused) vid.pause();
-    S.stampT = vid.currentTime || 0; S.stampLocked = true; updateStamp();
+    if (S.stampEnd == null && !S.region) S.stampT = vid.currentTime || 0;  // keep a range or region set up before typing
+    S.stampLocked = true; updateStamp();
   });
   $("noteText").addEventListener("input", updateStamp);
   $("noteText").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); addNote(); } });
-  $("b-restamp").onclick = () => { S.stampT = vid.currentTime || 0; S.stampLocked = true; updateStamp(); };
-  $("general").onchange = updateStamp;
+  $("b-restamp").onclick = () => {
+    S.stampT = vid.currentTime || 0; S.stampLocked = true;
+    if (S.stampEnd != null && S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
+    updateStamp(); renderMarks();
+  };
+  $("b-end").onclick = () => {
+    vid.pause();
+    const t = vid.currentTime || 0;
+    if (Math.abs(t - S.stampT) < 1 / FPS) S.stampEnd = null;
+    else if (t < S.stampT) { S.stampEnd = S.stampT; S.stampT = t; }
+    else S.stampEnd = t;
+    S.stampLocked = true; $("general").checked = false; updateStamp(); renderMarks();
+  };
+  $("b-unrange").onclick = () => { S.stampEnd = null; updateStamp(); renderMarks(); };
+  $("b-region").onclick = () => setDrawing(!S.drawing);
+  $("b-unregion").onclick = () => { S.region = null; updateStamp(); renderRegions(); };
+  $("general").onchange = () => { if ($("general").checked) S.stampEnd = null; updateStamp(); renderMarks(); };
   $("b-add").onclick = addNote;
   async function addNote() {
     const text = $("noteText").value.trim();
@@ -439,16 +502,88 @@ button { cursor: pointer; }
     const row = {
       cut: e.key, text, status: "open", reply: "", by: S.me || null,
       t: isSet || $("general").checked ? null : Math.round(S.stampT * 100) / 100,
+      tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
+      region: isSet || !S.region ? null : S.region,
       item: isSet ? ($("itemSel").value || null) : null,
       version: e.version || 1, createdAt: new Date().toISOString(),
     };
     $("b-add").disabled = true;
     try {
       await S.db.collection("notes").add(row);
-      $("noteText").value = ""; S.stampLocked = false; $("general").checked = false; updateStamp();
+      $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
+      S.stampT = vid.currentTime || 0;
+      updateStamp(); renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";
     } catch (err) { onWriteError(err); updateStamp(); }
   }
+
+  // ---------- regions: boxes on the frame, as fractions of the picture (not of the letterboxed element)
+  const reg = (r) => {
+    if (!r || typeof r !== "object") return null;
+    const c = (v) => Math.max(0, Math.min(1, +v || 0));
+    const x = c(r.x), y = c(r.y), w = Math.min(c(r.w), 1 - x), h = Math.min(c(r.h), 1 - y);
+    return w > 0 && h > 0 ? { x, y, w, h } : null;
+  };
+  function picture() {
+    const W = vid.clientWidth, H = vid.clientHeight;
+    const [aw, ah] = vid.videoWidth ? [vid.videoWidth, vid.videoHeight] : ratio(entryOf(S.sel)?.aspect);
+    const k = Math.min(W / aw, H / ah), w = aw * k, h = ah * k;
+    return { left: vid.offsetLeft + (W - w) / 2, top: vid.offsetTop + (H - h) / 2, w, h };
+  }
+  function setDrawing(on) {
+    S.drawing = !!on && entryOf(S.sel)?.kind === "cut"; S.draft = null;
+    if (S.drawing) { vid.pause(); if (S.stampEnd == null) S.stampT = vid.currentTime || 0; S.stampLocked = true; }
+    $("regions").classList.toggle("drawing", S.drawing);
+    updateStamp(); renderRegions();
+  }
+  const inWindow = (n, t) => {
+    const pad = 2 / FPS;
+    if (n.t == null) return vid.paused;
+    return n.tEnd != null ? t >= n.t - pad && t <= n.tEnd + pad : Math.abs(t - n.t) <= pad;
+  };
+  let regionsKey = "";
+  function renderRegions() {
+    const box = $("regions");
+    if (entryOf(S.sel)?.kind !== "cut") { box.hidden = true; regionsKey = ""; return; }
+    box.hidden = false;
+    const p = picture(), t = vid.currentTime || 0;
+    const shown = notesForSel().filter((n) => reg(n.region) &&
+      (n.id === S.focus || ((n.status === "open" || n.status === "fixed") && inWindow(n, t))));
+    const draft = reg(S.draft) || (S.drawing ? null : reg(S.region));
+    const key = [p.left, p.top, p.w, p.h, S.drawing, JSON.stringify(draft), ...shown.map((n) => n.id + n.status)].join("|");
+    if (key === regionsKey) return;
+    regionsKey = key;
+    Object.assign(box.style, { left: p.left + "px", top: p.top + "px", width: p.w + "px", height: p.h + "px" });
+    const place = (cls, r, label) => {
+      const b = el("div", "box " + cls);
+      Object.assign(b.style, { left: 100 * r.x + "%", top: 100 * r.y + "%", width: 100 * r.w + "%", height: 100 * r.h + "%" });
+      if (label) b.append(el("span", "lbl", label));
+      box.append(b);
+    };
+    box.replaceChildren();
+    for (const n of shown) place(n.status, reg(n.region), n.t == null ? "whole cut" : fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : ""));
+    if (draft) place("draft", draft, S.draft ? null : "new note");
+  }
+  const at = (ev) => { const r = $("regions").getBoundingClientRect(); return [Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))]; };
+  let pen = null;
+  $("regions").addEventListener("pointerdown", (ev) => {
+    if (!S.drawing) return;
+    ev.preventDefault(); pen = at(ev); $("regions").setPointerCapture(ev.pointerId);
+  });
+  $("regions").addEventListener("pointermove", (ev) => {
+    if (!pen) return;
+    const [x, y] = at(ev);
+    S.draft = { x: Math.min(x, pen[0]), y: Math.min(y, pen[1]), w: Math.abs(x - pen[0]), h: Math.abs(y - pen[1]) };
+    renderRegions();
+  });
+  $("regions").addEventListener("pointerup", () => {
+    if (!pen) return;
+    pen = null;
+    const r = S.draft;
+    if (r && r.w > 0.01 && r.h > 0.01) S.region = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
+    setDrawing(false);
+    $("noteText").focus();
+  });
 
   // ---------- notes
   const STATUS_LABEL = { open: "Open", fixed: "Fixed, check it", resolved: "Resolved", wontfix: "Won't fix" };
@@ -458,15 +593,32 @@ button { cursor: pointer; }
     [...$("track").querySelectorAll(".mark")].forEach((m) => m.remove());
     if (entryOf(S.sel)?.kind !== "cut") return;
     const d = dur();
-    for (const n of notesForSel()) {
+    const sel = $("track").querySelector(".sel");
+    if (sel) sel.remove();
+    if (S.stampEnd != null && !$("general").checked) {
+      const s = el("div", "sel");
+      s.style.left = (100 * Math.min(S.stampT, d) / d) + "%";
+      s.style.width = (100 * (Math.min(S.stampEnd, d) - Math.min(S.stampT, d)) / d) + "%";
+      $("track").append(s);
+    }
+    const ranged = (n) => n.tEnd != null;
+    for (const n of notesForSel().sort((a, b) => ranged(b) - ranged(a))) {
       if (n.t == null) continue;
-      const m = el("button", "mark " + n.status);
+      const m = el("button", "mark " + n.status + (ranged(n) ? " range" : ""));
+      const span = fmt(n.t) + (ranged(n) ? "–" + fmt(n.tEnd) : "");
       m.style.left = (100 * Math.min(n.t, d) / d) + "%";
-      m.title = fmt(n.t) + " · " + String(n.text).slice(0, 80);
-      m.setAttribute("aria-label", "Note at " + fmt(n.t));
-      m.onclick = () => seek(n.t, true);
+      if (ranged(n)) m.style.width = (100 * (Math.min(n.tEnd, d) - Math.min(n.t, d)) / d) + "%";
+      m.title = span + " · " + String(n.text).slice(0, 80);
+      m.setAttribute("aria-label", "Note at " + span);
+      m.onclick = () => focusNote(n);
       $("track").append(m);
     }
+  }
+  function focusNote(n) {
+    S.focus = n.id;
+    if (n.t != null) seek(n.t, true); else vid.pause();
+    for (const c of $("notes").querySelectorAll(".note")) c.classList.toggle("focus", c.dataset.id === n.id);
+    renderRegions();
   }
   function renderNotes() {
     const box = $("notes"); box.replaceChildren();
@@ -480,11 +632,13 @@ button { cursor: pointer; }
         isSet ? "No notes yet. Pick an item and write what should change." : "No notes yet. Pause on a frame and write what should change."));
     }
     for (const n of list) {
-      const card = el("div", "note " + n.status);
+      const card = el("div", "note " + n.status + (n.id === S.focus ? " focus" : ""));
+      card.dataset.id = n.id;
       const top = el("div", "top");
-      if (n.t != null) { const b = el("button", "t mono", fmt(n.t)); b.onclick = () => seek(n.t, true); top.append(b); }
+      if (n.t != null) { const b = el("button", "t mono", fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : "")); b.onclick = () => focusNote(n); top.append(b); }
       else if (n.item) top.append(el("span", "t mono", n.item));
       else top.append(el("span", "t", isSet ? "whole set" : "whole cut"));
+      if (!isSet && reg(n.region)) { const b = el("button", "t", "▭ region"); b.title = "Show the region on the frame"; b.onclick = () => focusNote(n); top.append(b); }
       top.append(el("span", "pill " + n.status, STATUS_LABEL[n.status] || n.status));
       top.append(el("span", "who", (n.by && n.by === S.me ? "You" : "Reviewer") + " · on v" + (n.version || 1)));
       card.append(top, el("div", "body", n.text));
@@ -498,7 +652,7 @@ button { cursor: pointer; }
       if (acts.childNodes.length) card.append(acts);
       box.append(card);
     }
-    renderMarks();
+    renderMarks(); renderRegions();
   }
   function act(label, fn) { const b = el("button", "ghost", label); b.onclick = fn; return b; }
   function confirmAct(label, fn) {

@@ -1,10 +1,12 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from cut_review import cli
-from cut_review.notes import fix_writes, load_export, save_notes, todo
+from cut_review.notes import extract_frames, fix_writes, load_export, region_of, save_notes, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
@@ -221,6 +223,48 @@ def test_todo_groups_by_room_order_and_lists_open_only(room_dir, tmp_path):
     assert out.index("## poll") < out.index("## carousel")
     assert out.index("0:03.2 · Early one") < out.index("0:20.0 · Later one")
     assert "Done" not in out and "Done" in todo(room, notes, show_all=True)
+
+
+def test_todo_shows_time_ranges_and_regions(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "rg": {"id": "rg", "version": 1, "data": {"cut": "poll", "t": 2, "tEnd": 4.5, "text": "Too slow", "status": "open"}},
+        "bx": {"id": "bx", "version": 1, "data": {"cut": "poll", "t": 6, "region": {"x": 0.1, "y": 0.25, "w": 0.5, "h": 0.2},
+                                                    "text": "Logo blurry", "status": "open"}},
+    }))
+    out = todo(room, notes)
+    assert "0:02.0–0:04.5 · Too slow" in out
+    assert "0:06.0 [region x 10% y 25%, 50%×20%] · Logo blurry" in out
+
+
+def test_region_of_clamps_and_rejects_bad_regions():
+    assert region_of({"region": {"x": 0.8, "y": -0.1, "w": 0.5, "h": 0.3}}) == (0.8, 0.0, pytest.approx(0.2), 0.3)
+    assert region_of({"region": {"x": 0.2, "y": 0.2, "w": 0, "h": 0.3}}) is None
+    assert region_of({"region": {"x": "a"}}) is None and region_of({"region": None}) is None and region_of({}) is None
+    assert where({"t": None, "tEnd": None}) == "whole" and where({"item": "01-hook", "t": 3}) == "01-hook"
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+def test_frames_cover_range_ends_and_box_regions(room_dir, tmp_path):
+    video = room_dir / "media" / "poll.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x112:d=3:r=10",
+                    "-pix_fmt", "yuv420p", str(video)], check=True)
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "pt": {"id": "pt", "version": 1, "data": {"cut": "poll", "t": 1, "text": "a", "status": "open"}},
+        "rg": {"id": "rg", "version": 1, "data": {"cut": "poll", "t": 0.5, "tEnd": 2, "text": "b", "status": "open"}},
+        "bx": {"id": "bx", "version": 1, "data": {"cut": "poll", "t": None, "region": {"x": 0, "y": 0, "w": 0.5, "h": 0.5},
+                                                    "text": "c", "status": "open"}},
+        "wh": {"id": "wh", "version": 1, "data": {"cut": "poll", "t": None, "text": "d", "status": "open"}},
+    }))
+    done = extract_frames(room, notes, width=64)
+    names = sorted(p.name for _, p in done)
+    assert names == ["poll_0000.00_bx.png", "poll_0000.50_rg_start.png", "poll_0001.00_pt.png", "poll_0002.00_rg_end.png"]
+    box = next(p for _, p in done if p.name.startswith("poll_0000.00_bx"))
+    plain = next(p for _, p in done if p.name.startswith("poll_0001.00_pt"))
+    red = lambda p: subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-vf", "crop=4:4:0:0,scale=1:1", "-f", "rawvideo",  # noqa: E731
+                                    "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    assert red(box)[0] > 150 and red(plain)[0] < 40  # the box's corner is red, the plain frame stays black
 
 
 def test_fix_writes_pin_the_note_and_name_the_cut_version(room_dir, tmp_path, capsys):

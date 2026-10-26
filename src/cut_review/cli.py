@@ -14,7 +14,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
-from .notes import extract_frames, fix_writes, load_export, save_notes, saved_notes, todo
+from .notes import extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, sha256
@@ -221,9 +221,9 @@ def cmd_frames(a) -> int:
     room = Room.load(a.room)
     done = extract_frames(room, saved_notes(room), a.width)
     if not done:
-        print("No open timed notes.")
+        print("No open timed or region notes.")
     for n, p in done:
-        print(f"{p}  ← {n['cut']} {n['t']}s: {n['text'][:80]}")
+        print(f"{p}  ← {n['cut']} {where(n)}: {n['text'][:80]}")
     return 0
 
 
@@ -314,7 +314,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--all", action="store_true", help="also list fixed, resolved and won't-fix notes")
     s.set_defaults(fn=cmd_notes)
 
-    s = sub.add_parser("frames", help="extract the frame behind every open timed note (ffmpeg)")
+    s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (ffmpeg)")
     s.add_argument("--width", type=int, default=540)
     s.set_defaults(fn=cmd_frames)
 

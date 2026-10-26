@@ -3,7 +3,8 @@
 Review rooms for rendered videos, run by Claude.
 
 You render videos (an edit, an animation, a set of social cuts). Claude puts them in a private claude.ai page, a
-**review room**, where you watch each cut on any device, pause on a frame and type a note, comment on still or clip
+**review room**, where you watch each cut on any device, pause on a frame and type a note (or mark a time range, or box a region
+of the frame), comment on still or clip
 sets such as a carousel, and give each cut a verdict. When you say "apply my notes", Claude reads them, changes
 whatever produced the video, re-renders, swaps the new version into the room and answers every note with what
 changed. You press "Looks right" or "Still wrong".

@@ -30,11 +30,13 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
 | `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`) | CLI `build` |
 | `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes` | CLI `build` |
-| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `item` (set item name or null), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
+| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null), `item` (set item name or null), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), new note at the paused frame
-(`n`, Enter saves), note markers on a timeline, notes filter (open + fixed, all), fixed notes show Claude's reply
+(`n`, Enter saves), note markers on a timeline,
+notes on a time range (drag the timeline, or `i` / `o` for start and end; shown as a bar) and on a region of the frame
+(`r` or "Draw region", then drag a box; shown on the frame while the playhead is on the note's frame or range), notes filter (open + fixed, all), fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
 deep links by `#<key>`, light and dark themes.
 
@@ -52,7 +54,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `build [--note KEY=TEXT]` | Writes every record to `.cut-review/out/` and prints the `ArtifactData` `batch` writes (with `file_path` and `if_version`). A cut's version goes up when its video or poster asset changed; `--note` adds the change-log line for that bump (default "re-rendered"). |
 | `written FILE` | Reads the batch result and records each document's database version. |
 | `notes DIR [--result FILE]` | Reads notes exported with `ArtifactData` `query`/`list` + `out_dir` (the files hold only note bodies; `--result` is the saved tool result text, which names each document's database version), saves them normalized to `.cut-review/notes.json`, prints a to-do list grouped by cut with timecodes. |
-| `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it. |
+| `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it: a range note gives its first and last frame (`_start`, `_end`), a region is boxed in red (a whole-cut note with a region uses the first frame). |
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
 
