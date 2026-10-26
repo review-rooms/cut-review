@@ -118,7 +118,10 @@ button { cursor: pointer; }
 .card h3 { margin: 0; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
 .composer textarea { width: 100%; min-height: 74px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 9px 10px; line-height: 1.4; }
 .crow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.stamp { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px; background: var(--sunk); font-size: 13px; }
+.times { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.tfield { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.tfield input { width: 82px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); padding: 5px 8px; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tfield input[aria-invalid="true"] { border-color: var(--bad); }
 .crow label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
 .primary { margin-left: auto; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; font-weight: 700; }
 .primary:disabled { opacity: 0.5; cursor: default; }
@@ -228,19 +231,22 @@ button { cursor: pointer; }
           <button id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
           <span class="tc mono" id="tc">0:00.0 / 0:00.0</span>
         </div>
-        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o range start and end · r draw a region · drag the timeline for a range</p>
+        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r draw a region · drag the timeline to pick a range</p>
       </div>
 
       <div class="side2">
         <div class="card composer">
           <h3>Add a note</h3>
           <textarea id="noteText" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
+          <div class="times" id="timeRow">
+            <span class="tfield"><label for="tFrom">From</label><input id="tFrom" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="0:00.0">
+              <button class="ghost" id="b-restamp" title="Start at the frame the video is on now (i)">Now</button></span>
+            <span class="tfield"><label for="tTo">To</label><input id="tTo" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="optional">
+              <button class="ghost" id="b-end" title="End at the frame the video is on now (o)">Now</button>
+              <button class="ghost" id="b-unrange" hidden title="Clear the end: a note on a single frame" aria-label="Clear the end time">✕</button></span>
+          </div>
           <div class="crow">
-            <span class="stamp mono" id="stampLbl">at 0:00.0</span>
-            <button class="ghost" id="b-restamp" title="Use the frame the video is on now (i)">Use current frame</button>
-            <button class="ghost" id="b-end" title="End a time range at the frame the video is on now (o)">End here</button>
             <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r)">Draw region</button>
-            <button class="ghost" id="b-unrange" hidden title="Make this a note on a single frame again">✕ range</button>
             <button class="ghost" id="b-unregion" hidden title="Remove the region">✕ region</button>
             <label id="generalLbl"><input type="checkbox" id="general"> Whole cut</label>
             <select id="itemSel" hidden aria-label="Item"></select>
@@ -333,7 +339,7 @@ button { cursor: pointer; }
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
     $("generalLbl").hidden = isSet;
-    for (const id of ["b-restamp", "b-end", "b-region"]) $(id).hidden = isSet;
+    $("b-region").hidden = isSet;
     if (changed) { S.stampEnd = null; S.region = null; S.focus = null; setDrawing(false); }
     $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
     if (changed) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; S.item = null; }
@@ -461,8 +467,11 @@ button { cursor: pointer; }
     const isSet = entryOf(S.sel)?.kind === "set";
     if (S.stampEnd != null && S.stampEnd < S.stampT) [S.stampT, S.stampEnd] = [S.stampEnd, S.stampT];
     const ranged = !isSet && !$("general").checked && S.stampEnd != null;
-    $("stampLbl").textContent = (isSet ? "on item" : $("general").checked ? "whole cut"
-      : ranged ? fmt(S.stampT) + " → " + fmt(S.stampEnd) : "at " + fmt(S.stampT)) + (!isSet && S.region ? " · region" : "");
+    $("timeRow").hidden = isSet || $("general").checked;
+    for (const [id, v] of [["tFrom", S.stampT], ["tTo", ranged ? S.stampEnd : null]]) {
+      if (document.activeElement === $(id)) continue;  // don't rewrite a field while it is being typed in
+      $(id).value = v == null ? "" : fmt(v); $(id).removeAttribute("aria-invalid");
+    }
     $("b-unrange").hidden = !ranged;
     $("b-unregion").hidden = isSet || !S.region;
     $("b-region").setAttribute("aria-pressed", String(S.drawing));
@@ -476,20 +485,43 @@ button { cursor: pointer; }
   });
   $("noteText").addEventListener("input", updateStamp);
   $("noteText").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); addNote(); } });
+  const leaveTimes = () => { if (/^t(From|To)$/.test(document.activeElement?.id || "")) document.activeElement.blur(); };
   $("b-restamp").onclick = () => {
+    leaveTimes();
     S.stampT = vid.currentTime || 0; S.stampLocked = true;
     if (S.stampEnd != null && S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
     updateStamp(); renderMarks();
   };
   $("b-end").onclick = () => {
-    vid.pause();
+    leaveTimes(); vid.pause();
     const t = vid.currentTime || 0;
     if (Math.abs(t - S.stampT) < 1 / FPS) S.stampEnd = null;
     else if (t < S.stampT) { S.stampEnd = S.stampT; S.stampT = t; }
     else S.stampEnd = t;
     S.stampLocked = true; $("general").checked = false; updateStamp(); renderMarks();
   };
-  $("b-unrange").onclick = () => { S.stampEnd = null; updateStamp(); renderMarks(); };
+  $("b-unrange").onclick = () => { leaveTimes(); S.stampEnd = null; updateStamp(); renderMarks(); };
+  // typed times: "1:05.3", "65.3" or "65"; an empty To means a note on a single frame
+  const parseT = (v) => {
+    const m = /^\s*(?:(\d+):)?(\d+(?:[.,]\d+)?)\s*$/.exec(v);
+    return m ? (+(m[1] || 0)) * 60 + +m[2].replace(",", ".") : NaN;
+  };
+  const clampT = (t) => Math.max(0, Math.min(t, dur()));
+  for (const [id, end] of [["tFrom", false], ["tTo", true]]) {
+    const inp = $(id);
+    inp.addEventListener("change", () => {
+      if (end && !inp.value.trim()) { S.stampEnd = null; inp.blur(); updateStamp(); renderMarks(); return; }
+      const t = parseT(inp.value);
+      if (isNaN(t)) { inp.setAttribute("aria-invalid", "true"); return; }
+      if (end) S.stampEnd = Math.abs(clampT(t) - S.stampT) < 1 / FPS ? null : clampT(t);
+      else S.stampT = clampT(t);
+      S.stampLocked = true; inp.blur();
+      seek(end && S.stampEnd != null ? S.stampEnd : S.stampT, true);
+      updateStamp(); renderMarks();
+    });
+    inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); inp.dispatchEvent(new Event("change")); } });
+    inp.addEventListener("focus", () => { vid.pause(); S.stampLocked = true; inp.select(); });
+  }
   $("b-region").onclick = () => setDrawing(!S.drawing);
   $("b-unregion").onclick = () => { S.region = null; updateStamp(); renderRegions(); };
   $("general").onchange = () => { if ($("general").checked) S.stampEnd = null; updateStamp(); renderMarks(); };

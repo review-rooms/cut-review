@@ -35,7 +35,8 @@ One generic page, the same for every room. Everything room-specific comes from i
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), new note at the paused frame
 (`n`, Enter saves), note markers on a timeline,
-notes on a time range (drag the timeline, or `i` / `o` for start and end; shown as a bar) and on a region of the frame
+notes on a time range (the composer's From and To fields, typed or set to the current frame with Now; dragging the
+timeline or `i` / `o` fill them too; shown as a bar) and on a region of the frame
 (`r` or "Draw region", then drag a box; shown on the frame while the playhead is on the note's frame or range), notes filter (open + fixed, all), fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
 deep links by `#<key>`, light and dark themes.
