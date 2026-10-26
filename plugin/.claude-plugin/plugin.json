@@ -1,0 +1,13 @@
+{
+  "name": "cut-review",
+  "version": "0.1.0",
+  "description": "Run a review room for rendered videos on claude.ai: the owner watches each cut, pins notes to exact frames and gives verdicts; Claude reads the notes, re-renders, swaps the new version in and answers each note.",
+  "author": {
+    "name": "cut-review contributors",
+    "url": "https://github.com/review-rooms"
+  },
+  "homepage": "https://github.com/review-rooms/cut-review",
+  "repository": "https://github.com/review-rooms/cut-review",
+  "license": "MIT",
+  "keywords": ["video", "review", "feedback", "artifact", "rendering"]
+}
