@@ -50,7 +50,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    `url` = the room). Save the result to a file and run `cut-review written <file>`.
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
    frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; fill To (next to From) in the note form,
-   or drag the timeline, for a note on a time range, and "Draw region" (`r`) to box the part of the frame a note is about.
+   or drag the timeline, for a note on a time range, and dragging on the picture (or "Draw region", `r`) to box the part of the frame a note is about.
 
 ## Apply the owner's notes
 

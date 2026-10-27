@@ -231,10 +231,11 @@ button { cursor: pointer; }
           <button data-rate="0.5" aria-pressed="false">0.5×</button>
           <button data-rate="1" aria-pressed="true">1×</button>
           <button id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
+          <button id="b-dl" title="Download this video" hidden>Download</button>
           <span class="versions" id="versions" role="group" aria-label="Version" hidden></span>
           <span class="tc mono" id="tc">0:00.0 / 0:00.0</span>
         </div>
-        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r draw a region · drag the timeline to pick a range</p>
+        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r or drag on the picture to draw a region · drag the timeline to pick a range</p>
       </div>
 
       <div class="side2">
@@ -249,7 +250,7 @@ button { cursor: pointer; }
               <button class="ghost" id="b-unrange" hidden title="Clear the end: a note on a single frame" aria-label="Clear the end time">✕</button></span>
           </div>
           <div class="crow">
-            <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r)">Draw region</button>
+            <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r, or just drag on the picture)">Draw region</button>
             <button class="ghost" id="b-unregion" hidden title="Remove the region">✕ region</button>
             <label id="generalLbl"><input type="checkbox" id="general"> Whole cut</label>
             <select id="itemSel" hidden aria-label="Item"></select>
@@ -356,7 +357,7 @@ button { cursor: pointer; }
     $("why").textContent = e.description || "";
     renderLog(e);
     if (isSet) {
-      if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; }
+      if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; $("b-dl").hidden = true; }
       renderItems(e);
     } else {
       const [w, h] = ratio(e.aspect);
@@ -369,6 +370,7 @@ button { cursor: pointer; }
         if (pick) vid.src = pick; else vid.removeAttribute("src");
         if (keep) vid.addEventListener("loadedmetadata", () => { vid.currentTime = keep; if (playing) vid.play().catch(() => {}); }, { once: true });
         if (e.poster) vid.poster = e.poster; else vid.removeAttribute("poster");
+        $("b-dl").hidden = !pick;
         S.stampT = 0; S.stampLocked = false;
       }
       renderScript(e);
@@ -446,6 +448,23 @@ button { cursor: pointer; }
     }
     return chosen ? chosen.video : e.video;
   }
+  // saves the video on screen as "<cut>[-<alt>]-v<version>.<ext>"; a URL the page can't fetch opens in a new tab instead
+  $("b-dl").onclick = async (ev) => {
+    const e = entryOf(S.sel), url = vid.dataset.src, b = ev.currentTarget;
+    if (!e || !url) return;
+    const alt = (e.alts || []).find((a) => a && a.video === url);
+    const ext = (new URL(url, location.href).pathname.match(/\.(\w+)$/) || [, "mp4"])[1];
+    b.disabled = true; b.textContent = "Downloading…";
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const href = URL.createObjectURL(await res.blob());
+      const a = el("a"); a.href = href; a.download = `${e.key}${alt ? "-" + alt.key : ""}-v${e.version || 1}.${ext}`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 60000);
+    } catch { window.open(url, "_blank", "noopener"); }
+    finally { b.disabled = false; b.textContent = "Download"; }
+  };
   $("b-loop").onclick = (ev) => { vid.loop = !vid.loop; ev.currentTarget.setAttribute("aria-pressed", String(vid.loop)); };
   for (const b of document.querySelectorAll("[data-rate]")) b.onclick = () => {
     vid.playbackRate = +b.dataset.rate;
@@ -627,6 +646,24 @@ button { cursor: pointer; }
     if (!S.drawing) return;
     ev.preventDefault(); pen = at(ev); $("regions").setPointerCapture(ev.pointerId);
   });
+  // dragging on the picture draws a region without pressing "Draw region" first; a plain click stays the
+  // player's, and the bottom strip is left to the native controls
+  let press = null;
+  vid.addEventListener("pointerdown", (ev) => {
+    press = null;
+    if (S.drawing || !ev.isPrimary || ev.button !== 0 || entryOf(S.sel)?.kind !== "cut") return;
+    if (ev.clientY > vid.getBoundingClientRect().bottom - 48) return;
+    press = { x: ev.clientX, y: ev.clientY, start: at(ev) };
+  });
+  vid.addEventListener("pointermove", (ev) => {
+    if (!press || Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < 6) return;
+    ev.preventDefault();
+    setDrawing(true);
+    pen = press.start; press = null;
+    $("regions").setPointerCapture(ev.pointerId);
+    $("regions").dispatchEvent(new PointerEvent("pointermove", ev));
+  });
+  for (const type of ["pointerup", "pointercancel"]) vid.addEventListener(type, () => { press = null; });
   $("regions").addEventListener("pointermove", (ev) => {
     if (!pen) return;
     const [x, y] = at(ev);
