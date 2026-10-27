@@ -156,6 +156,27 @@ def test_build_records_shape(room_dir, capsys):
     assert recs["sets/carousel"]["order"] == 1
 
 
+def test_alternate_videos_are_uploaded_built_and_versioned(room_dir, capsys):
+    media = room_dir / "media"
+    (media / "poll.vo.mp4").write_bytes(b"with-voice")
+    m = json.loads((room_dir / "room.json").read_text())
+    m["cuts"][0]["alts"] = [{"key": "vo", "label": "Voice + music", "file": "poll.vo.mp4"}]
+    m["cuts"][0]["videoLabel"] = "Silent"
+    m["cuts"][0]["altDefault"] = "vo"
+    (room_dir / "room.json").write_text(json.dumps(m))
+    assert "poll.vo.mp4" in Room.load(room_dir).referenced_files()
+    with pytest.raises(RoomError, match="poll.vo.mp4"):
+        uploaded(room_dir, capsys)
+        build_records(Room.load(room_dir), probe=NO_PROBE)
+    (room_dir / "up2.txt").write_text(upload_text(room_dir, {"poll.vo.mp4": "f" * 32}))
+    assert run(room_dir, "assets", str(room_dir / "up2.txt")) == 0
+    recs = {f"{c}/{d}": data for c, d, data, _ in build_records(Room.load(room_dir), probe=NO_PROBE)}
+    poll = recs["cuts/poll"]
+    assert poll["alts"] == [{"key": "vo", "label": "Voice + music", "video": "/_blob/" + "f" * 32}]
+    assert poll["videoLabel"] == "Silent" and poll["altDefault"] == "vo"
+    assert "alts" not in recs["sets/carousel"]
+
+
 def test_version_bumps_once_per_new_asset_and_only_after_written(room_dir, capsys):
     uploaded(room_dir, capsys)
     room = Room.load(room_dir)

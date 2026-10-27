@@ -65,7 +65,9 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
     order = 0
     for c in m.get("cuts", []):
         video, poster = room.asset_url(c["file"]), room.asset_url(c.get("poster"))
-        assets = [video, poster]
+        alts = [{"key": alt["key"], "label": alt.get("label", alt["key"]), "video": room.asset_url(alt["file"])}
+                for alt in c.get("alts", [])]
+        assets = [video, poster] + [alt["video"] for alt in alts]   # a new alternate is a new version too
         version, changes = _versioned(room, f"cuts/{c['key']}", assets, notes.get(c["key"]))
         length = c.get("length")
         if length is None:
@@ -77,6 +79,11 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
             "length": length, "video": video, "poster": poster,
             "version": version, "changes": changes, "script": list(c.get("script", [])),
         }
+        if alts:
+            data["alts"] = alts
+            for k in ("videoLabel", "altDefault"):
+                if c.get(k):
+                    data[k] = c[k]
         out.append(("cuts", c["key"], data, assets))
         order += 1
 

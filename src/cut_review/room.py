@@ -96,6 +96,9 @@ class Room:
             for k in ("file", "poster"):
                 if c.get(k):
                     out.append(c[k])
+            for alt in c.get("alts", []):          # alternate videos of the cut (e.g. with sound)
+                if alt.get("file"):
+                    out.append(alt["file"])
         for s in self.manifest.get("sets", []):
             for it in set_items(self, s):
                 out.append(it["file"])
