@@ -229,6 +229,7 @@ button { cursor: pointer; }
           <button data-rate="0.5" aria-pressed="false">0.5×</button>
           <button data-rate="1" aria-pressed="true">1×</button>
           <button id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
+          <button id="b-dl" title="Download this video" hidden>Download</button>
           <span class="tc mono" id="tc">0:00.0 / 0:00.0</span>
         </div>
         <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r or drag on the picture to draw a region · drag the timeline to pick a range</p>
@@ -353,7 +354,7 @@ button { cursor: pointer; }
     $("why").textContent = e.description || "";
     renderLog(e);
     if (isSet) {
-      if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; }
+      if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; $("b-dl").hidden = true; }
       renderItems(e);
     } else {
       const [w, h] = ratio(e.aspect);
@@ -363,6 +364,7 @@ button { cursor: pointer; }
         vid.dataset.src = e.video || "";
         if (e.video) vid.src = e.video; else vid.removeAttribute("src");
         if (e.poster) vid.poster = e.poster; else vid.removeAttribute("poster");
+        $("b-dl").hidden = !e.video;
         S.stampT = 0; S.stampLocked = false;
       }
       renderScript(e);
@@ -421,6 +423,22 @@ button { cursor: pointer; }
   $("b-play").onclick = () => (vid.paused ? vid.play().catch(() => {}) : vid.pause());
   $("b-back").onclick = () => seek((vid.currentTime || 0) - 1 / FPS, true);
   $("b-fwd").onclick = () => seek((vid.currentTime || 0) + 1 / FPS, true);
+  // saves the selected cut's video as "<cut>-v<version>.<ext>"; a URL the page can't fetch opens in a new tab instead
+  $("b-dl").onclick = async (ev) => {
+    const e = entryOf(S.sel), url = e?.video, b = ev.currentTarget;
+    if (!url) return;
+    const ext = (new URL(url, location.href).pathname.match(/\.(\w+)$/) || [, "mp4"])[1];
+    b.disabled = true; b.textContent = "Downloading…";
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const href = URL.createObjectURL(await res.blob());
+      const a = el("a"); a.href = href; a.download = `${e.key}-v${e.version || 1}.${ext}`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 60000);
+    } catch { window.open(url, "_blank", "noopener"); }
+    finally { b.disabled = false; b.textContent = "Download"; }
+  };
   $("b-loop").onclick = (ev) => { vid.loop = !vid.loop; ev.currentTarget.setAttribute("aria-pressed", String(vid.loop)); };
   for (const b of document.querySelectorAll("[data-rate]")) b.onclick = () => {
     vid.playbackRate = +b.dataset.rate;
