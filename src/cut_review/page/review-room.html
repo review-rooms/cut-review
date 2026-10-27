@@ -231,7 +231,7 @@ button { cursor: pointer; }
           <button id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
           <span class="tc mono" id="tc">0:00.0 / 0:00.0</span>
         </div>
-        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r draw a region · drag the timeline to pick a range</p>
+        <p class="kbd">Keys: k play · , . frame · n note at this frame · i o set From and To · r or drag on the picture to draw a region · drag the timeline to pick a range</p>
       </div>
 
       <div class="side2">
@@ -246,7 +246,7 @@ button { cursor: pointer; }
               <button class="ghost" id="b-unrange" hidden title="Clear the end: a note on a single frame" aria-label="Clear the end time">✕</button></span>
           </div>
           <div class="crow">
-            <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r)">Draw region</button>
+            <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r, or just drag on the picture)">Draw region</button>
             <button class="ghost" id="b-unregion" hidden title="Remove the region">✕ region</button>
             <label id="generalLbl"><input type="checkbox" id="general"> Whole cut</label>
             <select id="itemSel" hidden aria-label="Item"></select>
@@ -602,6 +602,24 @@ button { cursor: pointer; }
     if (!S.drawing) return;
     ev.preventDefault(); pen = at(ev); $("regions").setPointerCapture(ev.pointerId);
   });
+  // dragging on the picture draws a region without pressing "Draw region" first; a plain click stays the
+  // player's, and the bottom strip is left to the native controls
+  let press = null;
+  vid.addEventListener("pointerdown", (ev) => {
+    press = null;
+    if (S.drawing || !ev.isPrimary || ev.button !== 0 || entryOf(S.sel)?.kind !== "cut") return;
+    if (ev.clientY > vid.getBoundingClientRect().bottom - 48) return;
+    press = { x: ev.clientX, y: ev.clientY, start: at(ev) };
+  });
+  vid.addEventListener("pointermove", (ev) => {
+    if (!press || Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < 6) return;
+    ev.preventDefault();
+    setDrawing(true);
+    pen = press.start; press = null;
+    $("regions").setPointerCapture(ev.pointerId);
+    $("regions").dispatchEvent(new PointerEvent("pointermove", ev));
+  });
+  for (const type of ["pointerup", "pointercancel"]) vid.addEventListener(type, () => { press = null; });
   $("regions").addEventListener("pointermove", (ev) => {
     if (!pen) return;
     const [x, y] = at(ev);
