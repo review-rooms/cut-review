@@ -324,3 +324,12 @@ def test_page_carries_the_room_title(room_dir, capsys):
     html = out.read_text()
     assert html.startswith("<title>Test room</title>")
     assert 'db.collection("notes")' in html and 'db.doc("room/meta")' in html
+
+
+def test_page_asks_to_publish_with_downloads(room_dir, capsys):
+    # Pages on claude.ai can't download by themselves: the Download button goes through `downloads`,
+    # so an unlinked room must be told to publish with it.
+    out = room_dir / "page.html"
+    assert run(room_dir, "page", "-o", str(out)) == 0
+    assert '"downloads": true' in capsys.readouterr().err
+    assert 'use("downloads")' in out.read_text()

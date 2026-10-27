@@ -5,7 +5,7 @@
 The room folder must have been built (`cut-review build`): its records in `.cut-review/out/` seed the stand-in
 database, and `/_blob/<id>` serves the local file that `.cut-review/state.json` maps to that asset id, with byte
 ranges so videos seek. Notes and verdicts written on the page live in memory until the page reloads;
-`window.__store` exposes the data for checks. Nothing here talks to claude.ai.
+`window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved. Nothing here talks to claude.ai.
 """
 from __future__ import annotations
 
@@ -47,7 +47,13 @@ MOCK = r"""<script>
   const user = { id: async () => "u_harness", can: async () => true, isOwner: async () => true, canEdit: async () => true };
   window.__store = store;
   window.__db = db;
-  window.claude = { use: (n) => new Promise((r) => setTimeout(() => r(n === "db" ? db : n === "user" ? user : null), 30)) };
+  // `downloads` stand-in: records each save in window.__downloads; `?nodownloads` leaves it out (the page's fallback)
+  window.__downloads = [];
+  const downloads = location.search.includes("nodownloads") ? null : {
+    save: async ({ filename, data }) => { window.__downloads.push({ filename, size: data.size ?? data.length }); return { status: "saved" }; },
+  };
+  const caps = { db, user, downloads };
+  window.claude = { use: (n) => new Promise((r) => setTimeout(() => r(caps[n] ?? null), 30)) };
 })();
 </script>
 """

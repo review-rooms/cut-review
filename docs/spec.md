@@ -33,7 +33,7 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null), `item` (set item name or null), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
 
-Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), a Download button for the selected cut's video, new note at the paused frame
+Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
 (`n`, Enter saves), note markers on a timeline,
 notes on a time range (the composer's From and To fields, typed or set to the current frame with Now; dragging the
 timeline or `i` / `o` fill them too; shown as a bar) and on a region of the frame
@@ -48,7 +48,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | Command | Does |
 | --- | --- |
 | `init [--media DIR]` | Writes a `room.json` skeleton listing the videos (and `*.poster.png`) found in DIR. |
-| `page [-o FILE]` | Writes the page HTML, ready to publish with the Artifact tool. |
+| `page [-o FILE]` | Writes the page HTML, ready to publish with the Artifact tool, with `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`. |
 | `link URL` | Records the published room's URL in the state. |
 | `uploads` | Lists files that are new or changed since their last upload (sha-256), in batches of at most 25, as absolute paths for `Artifact` `file_paths`. |
 | `assets FILE` | Reads the upload result (the tool's text, or JSON `{path: id}`) and records each file's asset id and checksum. |
