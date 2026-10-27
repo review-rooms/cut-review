@@ -42,7 +42,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    A cut can also list `alts` (`[{key, label, file}]`: alternate videos such as a version with voice or music),
    switched under the player; `videoLabel` names the base video (default "Original"), `altDefault` the one shown first.
 2. `cut-review page` writes the page. Publish it with `Artifact`: `file_path` = the printed path, `icon: "video"`,
-   `capabilities: {"db": {}, "user": {}, "assets": {}}`, a one-line `description`. Then `cut-review link <url>`.
+   `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`, a one-line `description`. Then `cut-review link <url>`.
 3. `cut-review uploads` prints the files to upload in calls of at most 25. For each call: `Artifact` with `url`,
    `asset: true`, `file_paths` = that list. Save the tool's result text to a file and run `cut-review assets <file>`.
    (Each binary file must be 15 MB or less; re-encode bigger ones.)
@@ -78,4 +78,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
   rerun `cut-review fix` for those notes; for records, `cut-review build --all`.
 - `cut-review status` shows the link, pending uploads, each cut's version in the room and builds not yet written.
 - The page is the same for every room. To update it after a cut-review upgrade, `cut-review page` and publish the
-  file to the same `url` (omit `capabilities` and `icon`; they carry forward).
+  file to the same `url` (omit `capabilities` and `icon`; they carry forward). A room published before the
+  Download button has no `downloads` capability, so the button does nothing there: publish it once with the full
+  `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}` (a capabilities object replaces the
+  stored one, it doesn't add to it).

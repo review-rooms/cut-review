@@ -80,6 +80,11 @@ def _key(s: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "_-." else "-" for ch in s).strip("-.") or "cut"
 
 
+# What the published page needs from the artifact viewer. `downloads` lets the Download button save a video
+# (claude.ai pages can't download by themselves).
+CAPABILITIES = '{"db": {}, "user": {}, "assets": {}, "downloads": true}'
+
+
 def cmd_page(a) -> int:
     room = Room.load(a.room)
     page = resources.files("cut_review").joinpath("page/review-room.html").read_text()
@@ -90,8 +95,8 @@ def cmd_page(a) -> int:
     out.write_text(page)
     print(out.resolve())
     if not room.state.get("artifact"):
-        print('Publish it with the Artifact tool: file_path above, icon "video", '
-              'capabilities {"db": {}, "user": {}, "assets": {}}; then run `cut-review link URL`.', file=sys.stderr)
+        print(f'Publish it with the Artifact tool: file_path above, icon "video", '
+              f'capabilities {CAPABILITIES}; then run `cut-review link URL`.', file=sys.stderr)
     return 0
 
 

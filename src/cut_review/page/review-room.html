@@ -448,22 +448,36 @@ button { cursor: pointer; }
     }
     return chosen ? chosen.video : e.video;
   }
-  // saves the video on screen as "<cut>[-<alt>]-v<version>.<ext>"; a URL the page can't fetch opens in a new tab instead
+  // saves the video on screen as "<cut>[-<alt>]-v<version>.<ext>". On claude.ai a page can't download by itself:
+  // the `downloads` capability asks the viewer to confirm the save. Without it (the local harness) a plain link
+  // does; a URL the page can't fetch opens in a new tab instead
   $("b-dl").onclick = async (ev) => {
     const e = entryOf(S.sel), url = vid.dataset.src, b = ev.currentTarget;
     if (!e || !url) return;
     const alt = (e.alts || []).find((a) => a && a.video === url);
     const ext = (new URL(url, location.href).pathname.match(/\.(\w+)$/) || [, "mp4"])[1];
+    const filename = `${e.key}${alt ? "-" + alt.key : ""}-v${e.version || 1}.${ext}`;
     b.disabled = true; b.textContent = "Downloading…";
+    let label = "Download";
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(res.status);
-      const href = URL.createObjectURL(await res.blob());
-      const a = el("a"); a.href = href; a.download = `${e.key}${alt ? "-" + alt.key : ""}-v${e.version || 1}.${ext}`;
-      document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(href), 60000);
+      const blob = await res.blob();
+      const downloads = await (window.claude?.use ? window.claude.use("downloads") : null);
+      if (downloads) {
+        try { await downloads.save({ filename, data: blob }); }
+        catch (err) { if (err?.code !== "declined") label = "Download unavailable"; }
+      } else {
+        const href = URL.createObjectURL(blob);
+        const a = el("a"); a.href = href; a.download = filename;
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 60000);
+      }
     } catch { window.open(url, "_blank", "noopener"); }
-    finally { b.disabled = false; b.textContent = "Download"; }
+    finally {
+      b.disabled = false; b.textContent = label;
+      if (label !== "Download") setTimeout(() => { b.textContent = "Download"; }, 3000);
+    }
   };
   $("b-loop").onclick = (ev) => { vid.loop = !vid.loop; ev.currentTarget.setAttribute("aria-pressed", String(vid.loop)); };
   for (const b of document.querySelectorAll("[data-rate]")) b.onclick = () => {
