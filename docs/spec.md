@@ -28,7 +28,7 @@ One generic page, the same for every room. Everything room-specific comes from i
 | Record | Fields | Written by |
 | --- | --- | --- |
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
-| `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`) | CLI `build` |
+| `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
 | `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes` | CLI `build` |
 | `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null), `item` (set item name or null), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |

@@ -39,6 +39,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
    Edit it: `title`, `subtitle`, `groups` (`[{id, label}]`, sidebar order), and per cut `title`, `short`, `group`,
    `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (first one is highlighted), `description`, and `script`
    (`[{from, to, text}]` in seconds: voice-over or captions, clickable in the room). `scriptLabel` names that table.
+   A cut can also list `alts` (`[{key, label, file}]`: alternate videos such as a version with voice or music),
+   switched under the player; `videoLabel` names the base video (default "Original"), `altDefault` the one shown first.
 2. `cut-review page` writes the page. Publish it with `Artifact`: `file_path` = the printed path, `icon: "video"`,
    `capabilities: {"db": {}, "user": {}, "assets": {}}`, a one-line `description`. Then `cut-review link <url>`.
 3. `cut-review uploads` prints the files to upload in calls of at most 25. For each call: `Artifact` with `url`,
