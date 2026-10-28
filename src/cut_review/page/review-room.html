@@ -152,11 +152,27 @@ button { cursor: pointer; }
 .filter button { border: 1px solid var(--line); background: none; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
 .filter button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 
+.scriptbox { max-height: 380px; overflow: auto; overscroll-behavior: contain; margin: 0 -6px; }
 .script { width: 100%; border-collapse: collapse; font-size: 14px; }
 .script td { border-top: 1px solid var(--line); padding: 7px 6px; vertical-align: top; }
-.script td:first-child { width: 1%; white-space: nowrap; }
+.script td:first-child { width: 1%; white-space: nowrap; border-left: 3px solid transparent; }
+.script td:last-child { width: 1%; white-space: nowrap; text-align: right; }
 .script tr.now td { background: var(--accent-soft); }
-.script button { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; }
+.script tr.noted td:first-child { border-left-color: var(--warn); }
+.script .say { cursor: text; line-height: 1.5; }
+.script .cue { display: inline-block; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; line-height: 1.4; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin: 0 4px 0 0; white-space: nowrap; user-select: none; }
+.script .tbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; }
+.script .lbtn { border: 1px solid var(--line); background: none; border-radius: 99px; padding: 1px 8px; font-size: 11px; color: var(--muted); }
+.script .lbtn:hover, .script .lbtn:focus-visible { color: var(--accent); border-color: var(--accent); }
+.script .ncount { display: inline-block; min-width: 16px; margin-right: 4px; font-size: 11px; font-weight: 700; color: var(--warn); }
+.follow { border: 1px solid var(--line); background: none; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.follow[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.linetarget { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+.linetarget b { color: var(--ink); font-weight: 600; }
+.linetarget .q { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.note .quote { font-style: italic; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; margin: 2px 0 4px; }
+@media (pointer: coarse) { .script .lbtn, .follow { padding: 7px 12px; } .script .tbtn { padding: 8px 0; } }
 .changes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
@@ -241,6 +257,8 @@ button { cursor: pointer; }
       <div class="side2">
         <div class="card composer">
           <h3>Add a note</h3>
+          <p class="linetarget" id="lineTarget" hidden><span>On <b id="lineTargetN"></b></span><span class="q" id="lineTargetQ"></span>
+            <button class="ghost" id="b-unline" title="Not about the script any more" aria-label="Detach from the script line">✕</button></p>
           <textarea id="noteText" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
           <div class="times" id="timeRow">
             <span class="tfield"><label for="tFrom">From</label><input id="tFrom" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="0:00.0">
@@ -259,15 +277,18 @@ button { cursor: pointer; }
           <p class="hint" id="composerHint">Enter adds the note. Shift+Enter for a new line.</p>
         </div>
 
+        <div class="card" id="scriptCard" hidden>
+          <h3><span id="scriptLabel">Script</span> <span class="mono" id="scriptLen"></span>
+            <button class="follow" id="b-follow" aria-pressed="true" title="Scroll the script with the video">Follow</button></h3>
+          <div class="scriptbox" id="scriptBox"><table class="script"><tbody id="script"></tbody></table></div>
+          <p class="hint">Select words in a line, then Comment, to note just those words. Click a line to jump there.</p>
+        </div>
+
         <div class="card">
           <h3>Notes <span class="filter" id="filter"><button data-f="active" aria-pressed="true">Open + fixed</button><button data-f="all" aria-pressed="false">All</button></span></h3>
           <div class="notes" id="notes"></div>
         </div>
 
-        <div class="card" id="scriptCard" hidden>
-          <h3><span id="scriptLabel">Script</span> <span class="mono" id="scriptLen"></span></h3>
-          <table class="script"><tbody id="script"></tbody></table>
-        </div>
 
         <div class="card" id="logCard" hidden>
           <h3>Changes</h3>
@@ -284,7 +305,8 @@ button { cursor: pointer; }
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
               sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
-              stampEnd: null, region: null, drawing: false, draft: null, focus: null };
+              stampEnd: null, region: null, drawing: false, draft: null, focus: null,
+              line: null, follow: true, nowRow: -1, scriptTouched: 0 };
   const vid = $("vid");
 
   const fmt = (t) => {
@@ -344,7 +366,7 @@ button { cursor: pointer; }
     $("itemSel").hidden = !isSet;
     $("generalLbl").hidden = isSet;
     $("b-region").hidden = isSet;
-    if (changed) { S.stampEnd = null; S.region = null; S.focus = null; setDrawing(false); }
+    if (changed) { S.stampEnd = null; S.region = null; S.focus = null; S.line = null; renderLineTarget(); setDrawing(false); }
     $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
     if (changed) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; S.item = null; }
     $("title").textContent = e.title || e.key;
@@ -393,16 +415,98 @@ button { cursor: pointer; }
   });
 
   // ---------- script and change log
+  // a script line's text with its delivery cues ("[whisper]") as tags, set with textContent only
+  function sayNodes(text) {
+    const out = [];
+    for (const part of String(text || "").split(/(\[[^\]]*\])/)) {
+      if (!part) continue;
+      if (/^\[[^\]]*\]$/.test(part)) out.push(el("span", "cue", part.slice(1, -1).trim()));
+      else out.push(document.createTextNode(part));
+    }
+    return out;
+  }
+  const scriptOf = (e) => (e && e.script) || [];
+  // the words selected inside one line's text (cues aside), or null
+  function quoteIn(say) {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if (!say.contains(r.commonAncestorContainer)) return null;
+    const frag = r.cloneContents();
+    for (const c of frag.querySelectorAll ? frag.querySelectorAll(".cue") : []) c.remove();
+    const q = frag.textContent.replace(/\s+/g, " ").trim();
+    return q || null;
+  }
   function renderScript(e) {
     const tb = $("script"); tb.replaceChildren();
     $("scriptLabel").textContent = S.meta.scriptLabel || "Script";
     $("scriptLen").textContent = e.length ? Math.round(e.length) + " s" : "";
-    for (const r of e.script || []) {
-      const tr = el("tr"); tr.dataset.from = r.from; tr.dataset.to = r.to ?? r.from;
-      const td = el("td"); const b = el("button", "mono", fmt(r.from)); b.onclick = () => seek(r.from, true); td.append(b);
-      tr.append(td, el("td", null, r.text ?? r.say ?? ""));
-      tb.append(tr);
+    S.nowRow = -1;
+    scriptOf(e).forEach((r, i) => {
+      const from = +r.from || 0, to = r.to != null ? +r.to : from;
+      const tr = el("tr"); tr.dataset.from = from; tr.dataset.to = to; tr.dataset.i = i;
+      const t = el("td"); const tb_ = el("button", "tbtn mono", fmt(from)); tb_.onclick = () => seek(from, true); t.append(tb_);
+      const say = el("td", "say"); say.append(...sayNodes(r.text ?? r.say ?? ""));
+      say.onclick = () => { if (!quoteIn(say)) seek(from, false); };
+      const c = el("td");
+      const n = el("span", "ncount"); n.title = "Notes on this line";
+      const b = el("button", "lbtn", "Comment"); b.title = "Comment on this line, or on the words you selected in it";
+      let held = null;                       // the selection, read before the click can clear it
+      b.addEventListener("pointerdown", () => { held = quoteIn(say); });
+      b.onclick = () => { pickLine(i, held ?? quoteIn(say)); held = null; };
+      c.append(n, b);
+      tr.append(t, say, c); tb.append(tr);
+    });
+    renderScriptMarks();
+  }
+  // which lines carry notes (open or fixed), without rebuilding the rows (a selection survives)
+  function renderScriptMarks() {
+    const mine = notesForSel().filter((n) => n.line != null && (n.status === "open" || n.status === "fixed"));
+    for (const tr of $("script").querySelectorAll("tr")) {
+      const k = mine.filter((n) => +n.line === +tr.dataset.i).length;
+      tr.classList.toggle("noted", k > 0);
+      const c = tr.querySelector(".ncount"); if (c) c.textContent = k ? String(k) : "";
     }
+  }
+  function pickLine(i, quote) {
+    const e = entryOf(S.sel), r = scriptOf(e)[i]; if (!r) return;
+    const from = +r.from || 0, to = r.to != null ? +r.to : from;
+    S.line = { i, quote: quote || null };
+    S.region = null; $("general").checked = false;
+    S.stampT = from; S.stampEnd = to - from >= 1 / FPS ? to : null; S.stampLocked = true;
+    seek(from, true);
+    renderLineTarget(); updateStamp(); renderMarks(); renderRegions();
+    $("noteText").focus();
+  }
+  function renderLineTarget() {
+    const l = S.line;
+    $("lineTarget").hidden = !l;
+    if (!l) return;
+    $("lineTargetN").textContent = "script line " + (l.i + 1);
+    const r = scriptOf(entryOf(S.sel))[l.i];
+    const plain = String(r?.text ?? "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+    $("lineTargetQ").textContent = l.quote ? "“" + l.quote + "”" : plain;
+  }
+  $("b-unline").onclick = () => { S.line = null; renderLineTarget(); };
+  // follow along: keep the current line in view unless the reviewer just scrolled the script themselves
+  try { S.follow = localStorage.getItem("cutreview.follow") !== "0"; } catch (err) {}
+  $("b-follow").setAttribute("aria-pressed", String(S.follow));
+  $("b-follow").onclick = () => {
+    S.follow = !S.follow; $("b-follow").setAttribute("aria-pressed", String(S.follow));
+    try { localStorage.setItem("cutreview.follow", S.follow ? "1" : "0"); } catch (err) {}
+    if (S.follow) { S.scriptTouched = 0; S.nowRow = -1; }
+  };
+  for (const ev of ["wheel", "touchmove"]) $("scriptBox").addEventListener(ev, () => { S.scriptTouched = Date.now(); }, { passive: true });
+  function followScript(t) {
+    const rows = $("script").querySelectorAll("tr");
+    let now = -1;
+    rows.forEach((tr, i) => { const on = t >= +tr.dataset.from && t < +tr.dataset.to; tr.classList.toggle("now", on); if (on) now = i; });
+    if (now < 0 || now === S.nowRow) return;
+    S.nowRow = now;
+    if (!S.follow || Date.now() - S.scriptTouched < 4000 || $("scriptCard").hidden) return;
+    const box = $("scriptBox"), row = rows[now];
+    const top = box.scrollTop + row.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3;
+    box.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }
   function renderLog(e) {
     const log = e.changes || [];
@@ -419,7 +523,7 @@ button { cursor: pointer; }
     $("fill").style.width = (100 * t / d) + "%";
     $("playhead").style.left = (100 * t / d) + "%";
     $("b-play").textContent = vid.paused ? "Play" : "Pause";
-    for (const tr of $("script").querySelectorAll("tr")) tr.classList.toggle("now", t >= +tr.dataset.from && t < +tr.dataset.to);
+    followScript(t);
     if (!S.stampLocked && S.stampEnd == null) { S.stampT = t; updateStamp(); }
     renderRegions();
   }
@@ -595,12 +699,14 @@ button { cursor: pointer; }
       tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
       region: isSet || !S.region ? null : S.region,
       item: isSet ? ($("itemSel").value || null) : null,
+      line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
       version: e.version || 1, createdAt: new Date().toISOString(),
     };
     $("b-add").disabled = true;
     try {
       await S.db.collection("notes").add(row);
       $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
+      S.line = null; renderLineTarget();
       S.stampT = vid.currentTime || 0;
       updateStamp(); renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";
@@ -747,9 +853,12 @@ button { cursor: pointer; }
       else if (n.item) top.append(el("span", "t mono", n.item));
       else top.append(el("span", "t", isSet ? "whole set" : "whole cut"));
       if (!isSet && reg(n.region)) { const b = el("button", "t", "▭ region"); b.title = "Show the region on the frame"; b.onclick = () => focusNote(n); top.append(b); }
+      if (!isSet && n.line != null) { const b = el("button", "t", "¶ line " + (+n.line + 1)); b.title = "Show the line in the script"; b.onclick = () => { focusNote(n); showLine(+n.line); }; top.append(b); }
       top.append(el("span", "pill " + n.status, STATUS_LABEL[n.status] || n.status));
       top.append(el("span", "who", (n.by && n.by === S.me ? "You" : "Reviewer") + " · on v" + (n.version || 1)));
-      card.append(top, el("div", "body", n.text));
+      card.append(top);
+      if (n.quote) card.append(el("div", "quote", "“" + n.quote + "”"));
+      card.append(el("div", "body", n.text));
       if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude" + (n.fixedIn ? " · v" + n.fixedIn : "")), document.createTextNode(n.reply)); card.append(r); }
       const acts = el("div", "acts");
       if (S.canWrite && S.db) {
@@ -760,7 +869,13 @@ button { cursor: pointer; }
       if (acts.childNodes.length) card.append(acts);
       box.append(card);
     }
-    renderMarks(); renderRegions();
+    renderMarks(); renderRegions(); renderScriptMarks();
+  }
+  function showLine(i) {
+    const row = $("script").querySelector('tr[data-i="' + i + '"]'); if (!row) return;
+    const box = $("scriptBox");
+    box.scrollTo({ top: Math.max(0, box.scrollTop + row.getBoundingClientRect().top - box.getBoundingClientRect().top - 12), behavior: "smooth" });
+    S.scriptTouched = Date.now();
   }
   function act(label, fn) { const b = el("button", "ghost", label); b.onclick = fn; return b; }
   function confirmAct(label, fn) {

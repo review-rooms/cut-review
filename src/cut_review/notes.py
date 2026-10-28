@@ -34,8 +34,17 @@ def region_of(note: dict) -> tuple[float, float, float, float] | None:
     return (x, y, w, h) if w > 0 and h > 0 else None
 
 
+def script_line(note: dict) -> int | None:
+    """The 0-based script line a note is on, or None."""
+    try:
+        i = int(note["line"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return i if i >= 0 else None
+
+
 def where(note: dict) -> str:
-    """Where a note points: set item, time range, time or whole cut, plus its frame region."""
+    """Where a note points: set item, time range, time or whole cut, plus its frame region and script line."""
     if note.get("item"):
         at = note["item"]
     elif note.get("t") is not None and note.get("tEnd") is not None:
@@ -45,6 +54,10 @@ def where(note: dict) -> str:
     r = region_of(note)
     if r:
         at += " [region x {:.0%} y {:.0%}, {:.0%}×{:.0%}]".format(*r)
+    i = script_line(note)
+    if i is not None:
+        q = note.get("quote")
+        at += f" [script line {i + 1}" + (f", on “{q}”" if isinstance(q, str) and q.strip() else "") + "]"
     return at
 
 
@@ -117,6 +130,7 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
     """A to-do list grouped by cut, in the room's order, timed notes first."""
     keys = [c["key"] for c in room.manifest.get("cuts", [])] + [s["key"] for s in room.manifest.get("sets", [])]
     titles = {e["key"]: e.get("title", e["key"]) for e in room.manifest.get("cuts", []) + room.manifest.get("sets", [])}
+    scripts = {c["key"]: c.get("script") or [] for c in room.manifest.get("cuts", [])}
     counts = {s: sum(1 for n in notes if n.get("status") == s) for s in STATUSES}
     lines = [f"# Notes: {counts['open']} open, {counts['fixed']} fixed (waiting for the owner), "
              f"{counts['resolved']} resolved, {counts['wontfix']} won't fix", ""]
@@ -128,6 +142,9 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
         lines.append(f"## {key}: {titles.get(key, '(not in room.json)')}" + (f" (now v{ver})" if ver else ""))
         for n in mine:
             lines.append(f"- [{n.get('status')}] {where(n)} · {n['text']}  (id {n['id']}, written on v{n.get('version', 1)})")
+            i, script = script_line(n), scripts.get(key, [])
+            if i is not None and i < len(script):
+                lines.append(f"  line: {script[i].get('text', '')}")
             if n.get("reply"):
                 lines.append(f"  reply: {n['reply']}")
         lines.append("")
