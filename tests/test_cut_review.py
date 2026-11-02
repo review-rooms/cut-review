@@ -562,7 +562,7 @@ def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
     assert html.count("🎙 Record how it should sound") == 1 and html.count(">Pick a file<") == 1
     assert 'id="takeCap" accept="audio/*" capture' in html and 'id="takePick" accept="audio/*,video/*"' in html
     assert 'id="takeRow" hidden' in html                      # nothing about recording shows until a note is on a line
-    assert "take: S.line && S.take" in html and 'use("assets")' in html
+    assert "take: S.line && take && asset" in html and 'use("assets")' in html
     assert "Keeping only the sound…" in html
 
 

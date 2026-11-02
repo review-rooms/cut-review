@@ -337,7 +337,7 @@ button { cursor: pointer; }
               sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
-              assets: null, take: null, takeGen: 0, takeBusy: false };
+              assets: null, take: null, takeGen: 0, takeBusy: false, saving: false };
   const vid = $("vid");
 
   const fmt = (t) => {
@@ -754,6 +754,7 @@ button { cursor: pointer; }
   // and re-recorded in real time. Stored as video/mp4 or video/webm, the types the asset store takes.
   const TAKE_MAX = 20 * 1024 * 1024;
   const takeErr = (name) => Object.assign(new Error(name), { name });
+  const within = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(takeErr("Unusable")), ms))]);
   let actx = null;
   function wakeAudio() {  // call from the tap that opens a picker: iOS only starts audio from a gesture
     try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch { actx = null; }
@@ -839,10 +840,11 @@ button { cursor: pointer; }
   async function reRecord(file, buf) {
     const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => window.MediaRecorder?.isTypeSupported?.(t));
     if (!actx || !mime) throw takeErr("Unusable");
-    await actx.resume();
+    await within(actx.resume(), 3000);   // after the picker, iOS may never resume outside a gesture
     let audio;
-    try { audio = await actx.decodeAudioData(buf.slice(0)); } catch { throw takeErr("Unusable"); }
+    try { audio = await within(actx.decodeAudioData(buf.slice(0)), 20000); } catch { throw takeErr("Unusable"); }
     if (!audio.duration) throw takeErr("Unusable");
+    if (audio.duration > 300) throw takeErr("TooLong");   // re-recording runs in real time
     const src = actx.createBufferSource(); src.buffer = audio;
     const dest = actx.createMediaStreamDestination(); src.connect(dest);
     const rec = new MediaRecorder(dest.stream, { mimeType: mime, audioBitsPerSecond: 128000 });
@@ -869,6 +871,7 @@ button { cursor: pointer; }
 
   // ---------- composer
   function updateStamp() {
+    renderTake();
     const isSet = entryOf(S.sel)?.kind === "set";
     if (S.stampEnd != null && S.stampEnd < S.stampT) [S.stampT, S.stampEnd] = [S.stampEnd, S.stampT];
     const ranged = !isSet && !$("general").checked && S.stampEnd != null;
@@ -880,8 +883,7 @@ button { cursor: pointer; }
     $("b-unrange").hidden = !ranged;
     $("b-unregion").hidden = isSet || !S.region;
     $("b-region").setAttribute("aria-pressed", String(S.drawing));
-    $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim() || S.takeBusy;
-    renderTake();
+    $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim() || !!S.takeBusy || S.saving;
   }
   $("noteText").addEventListener("focus", () => {
     if (entryOf(S.sel)?.kind !== "cut") return;
@@ -933,41 +935,47 @@ button { cursor: pointer; }
   $("general").onchange = () => { if ($("general").checked) S.stampEnd = null; updateStamp(); renderMarks(); };
   $("b-add").onclick = addNote;
   async function addNote() {
-    if (!$("noteText").value.trim() || !S.db || !entryOf(S.sel) || S.takeBusy) return;
-    let asset = null;
-    if (S.line && S.take) {   // the take was uploading since it was recorded; the note waits for it
-      const take = S.take;
-      $("b-add").disabled = true; $("composerHint").textContent = "Keeping only the sound…";
-      try { asset = await take.upload; }
-      catch (err) {   // keep the text and the take; the next Add tries the upload again
-        take.upload = S.assets.upload(take.blob, { type: take.type }); take.upload.catch(() => {});
-        onWriteError(err); updateStamp(); return;
-      }
-    }
-    const text = $("noteText").value.trim();
-    const e = entryOf(S.sel);
-    if (!text || !e) { updateStamp(); return; }
-    const isSet = e.kind === "set";
-    const row = {
-      cut: e.key, text, status: "open", reply: "", by: S.me || null,
-      t: isSet || $("general").checked ? null : Math.round(S.stampT * 100) / 100,
-      tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
-      region: isSet || !S.region ? null : S.region,
-      item: isSet ? ($("itemSel").value || null) : null,
-      line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
-      qStart: isSet || !S.line || S.line.qs == null ? null : S.line.qs, qEnd: isSet || !S.line || S.line.qe == null ? null : S.line.qe,
-      take: S.line && S.take && asset ? { asset: asset.id, seconds: Math.round(S.take.seconds * 10) / 10, type: S.take.type } : null,
-      version: e.version || 1, createdAt: new Date().toISOString(),
-    };
-    $("b-add").disabled = true;
+    if (S.saving || !$("noteText").value.trim() || !S.db || !entryOf(S.sel) || S.takeBusy) return;
+    S.saving = true; updateStamp();   // one save at a time (Enter skips the disabled button); hides Redo and Remove
+    const sel = S.sel, line = S.line, take = S.line && S.take ? S.take : null;
     try {
-      await S.db.collection("notes").add(row);
+      let asset = null;
+      if (take) {   // the take was uploading since it was recorded; the note waits for it
+        $("composerHint").textContent = "Keeping only the sound…";
+        try { asset = await take.upload; }
+        catch (err) {   // keep the text and the take; the next Add tries the upload again
+          if (S.take === take) { take.upload = S.assets.upload(take.blob, { type: take.type }); take.upload.catch(() => {}); }
+          onWriteError(err); return;
+        }
+        if (S.sel !== sel || S.line !== line || S.take !== take) {
+          $("composerHint").textContent = "Not added: the note moved while its take was saving. Check it and add it again."; return;
+        }
+      }
+      const text = $("noteText").value.trim();
+      const e = entryOf(S.sel);
+      if (!text || !e) return;
+      const isSet = e.kind === "set";
+      const row = {
+        cut: e.key, text, status: "open", reply: "", by: S.me || null,
+        t: isSet || $("general").checked ? null : Math.round(S.stampT * 100) / 100,
+        tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
+        region: isSet || !S.region ? null : S.region,
+        item: isSet ? ($("itemSel").value || null) : null,
+        line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
+        qStart: isSet || !S.line || S.line.qs == null ? null : S.line.qs, qEnd: isSet || !S.line || S.line.qe == null ? null : S.line.qe,
+        take: S.line && take && asset ? { asset: asset.id, seconds: Math.round(take.seconds * 10) / 10, type: take.type } : null,
+        version: e.version || 1, createdAt: new Date().toISOString(),
+      };
+      if (take) S.take = null;   // the note holds the take now: leaving the line while it is written must not delete it
+      try { await S.db.collection("notes").add(row); }
+      catch (err) { if (take && !S.take) S.take = take; onWriteError(err); return; }
+      if (take) releaseTake(take);
       $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
-      dropTake(true); S.line = null; renderLineTarget(); renderScriptMarks();
+      S.line = null; renderLineTarget(); renderScriptMarks();
       S.stampT = vid.currentTime || 0;
-      updateStamp(); renderMarks(); renderRegions();
+      renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";
-    } catch (err) { onWriteError(err); updateStamp(); }
+    } finally { S.saving = false; updateStamp(); }
   }
 
   // ---------- the take: how a script line should sound, recorded with the phone; only on a note on a line
@@ -976,32 +984,39 @@ button { cursor: pointer; }
     return n.line != null && t && typeof t === "object" && /^[0-9a-f]{32}$/.test(t.asset) && typeof t.seconds === "number"
       && t.seconds >= 0 && (t.type === "video/mp4" || t.type === "video/webm") ? t : null;
   };
+  const TYPE_HINT = "Enter adds the note. Shift+Enter for a new line.";
+  const movedFrom = (at) => !S.line || at.sel !== S.sel || at.i !== S.line.i;
   function renderTake() {
-    if (!S.line && S.take) dropTake(false);   // a take belongs to a line: detached or another cut, it goes
-    $("takeRow").hidden = !(S.line && S.assets && S.canWrite);
-    $("takeAsk").hidden = !!S.take || S.takeBusy;
+    // a take belongs to the line it was recorded for: detached, another line or another cut, it goes
+    if (S.take && movedFrom(S.take.at)) dropTake();
+    if (S.takeBusy && movedFrom(S.takeBusy)) { S.takeGen++; S.takeBusy = false; $("composerHint").textContent = TYPE_HINT; }
+    $("takeRow").hidden = !(S.line && S.assets && S.canWrite) || S.saving;
+    $("takeAsk").hidden = !!S.take || !!S.takeBusy;
     $("takeHave").hidden = !S.take;
     if (S.take) $("takeLen").textContent = S.take.seconds.toFixed(1) + " s";
   }
-  function dropTake(saved) {   // saved: the note now holds the asset; otherwise the upload is deleted
-    const t = S.take; if (!t) return;
-    S.take = null; S.takeGen++;
+  function releaseTake(t) {   // stop showing a take in the form
+    if (S.take === t) S.take = null;
     $("takeAudio").removeAttribute("src"); $("takeAudio").load();
     URL.revokeObjectURL(t.url);
-    if (!saved) t.upload.then((a) => S.assets && S.assets.delete(a.id)).catch(() => {});
+  }
+  function dropTake() {   // a take that won't be on a note: its upload is deleted
+    const t = S.take; if (!t) return;
+    releaseTake(t); S.takeGen++;
+    t.upload.then((a) => S.assets && S.assets.delete(a.id)).catch(() => {});
     renderTake();
   }
   async function takeFrom(file) {
-    dropTake(false);
-    const gen = ++S.takeGen;
-    S.takeBusy = true; $("composerHint").textContent = "Keeping only the sound…"; updateStamp();
+    if (!S.line) return;
+    dropTake();
+    const gen = ++S.takeGen, at = { sel: S.sel, i: S.line.i };
+    S.takeBusy = at; $("composerHint").textContent = "Keeping only the sound…"; updateStamp();
     try {
       const out = await audioOnly(file);
-      if (gen !== S.takeGen) return;   // replaced by a newer recording
-      if (!S.line || !S.assets) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; return; }   // the note left its line meanwhile
+      if (gen !== S.takeGen || !S.assets) return;   // replaced, or the note left its line meanwhile
       const upload = S.assets.upload(out.blob, { type: out.blob.type });
       upload.catch(() => {});
-      S.take = { blob: out.blob, seconds: out.seconds, type: out.blob.type, upload, url: URL.createObjectURL(out.blob) };
+      S.take = { blob: out.blob, seconds: out.seconds, type: out.blob.type, upload, at, url: URL.createObjectURL(out.blob) };
       $("takeAudio").src = S.take.url;
       $("composerHint").textContent = "Got it. Play it back, then add the note.";
     } catch (err) {
@@ -1015,7 +1030,7 @@ button { cursor: pointer; }
   for (const id of ["takeCap", "takePick"]) {
     $(id).onchange = (ev) => { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) takeFrom(f); };
   }
-  $("b-untake").onclick = () => { dropTake(false); $("composerHint").textContent = "Take removed."; };
+  $("b-untake").onclick = () => { dropTake(); $("composerHint").textContent = "Take removed."; };
 
   // ---------- regions: boxes on the frame, as fractions of the picture (not of the letterboxed element)
   const reg = (r) => {
