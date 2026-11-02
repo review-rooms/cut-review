@@ -258,6 +258,29 @@ def test_todo_shows_time_ranges_and_regions(room_dir, tmp_path):
     assert "0:06.0 [region x 10% y 25%, 50%×20%] · Logo blurry" in out
 
 
+def test_todo_shows_script_lines_and_quotes(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "q": {"id": "q", "version": 1, "data": {"cut": "poll", "t": 0, "tEnd": 3, "line": 0, "quote": "Hook",
+                                                  "text": "Say it slower", "status": "open"}},
+        "l": {"id": "l", "version": 1, "data": {"cut": "poll", "t": 0, "tEnd": 3, "line": 0, "quote": None,
+                                                  "text": "Cut this line", "status": "open"}},
+        "x": {"id": "x", "version": 1, "data": {"cut": "poll", "t": 0, "line": 7, "text": "Line gone", "status": "open"}},
+    }))
+    out = todo(room, notes)
+    assert '0:00.0–0:03.0 [script line 1, on “Hook”] · Say it slower' in out
+    assert '0:00.0–0:03.0 [script line 1] · Cut this line' in out
+    assert '  line: Hook' in out                       # the line as the room has it now, so a session sees what it said
+    assert '[script line 8] · Line gone' in out          # a line the script no longer has still shows its number
+
+
+def test_page_script_scroll_respects_reduced_motion(room_dir, capsys):
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    assert 'behavior: "smooth"' not in html and "prefers-reduced-motion: reduce)\").matches" in html
+
+
 def test_region_of_clamps_and_rejects_bad_regions():
     assert region_of({"region": {"x": 0.8, "y": -0.1, "w": 0.5, "h": 0.3}}) == (0.8, 0.0, pytest.approx(0.2), 0.3)
     assert region_of({"region": {"x": 0.2, "y": 0.2, "w": 0, "h": 0.3}}) is None
