@@ -133,7 +133,7 @@ button { cursor: pointer; }
 .take { display: flex; flex-direction: column; gap: 6px; }
 .take audio, .note audio { width: 100%; height: 36px; }
 .tbtn { cursor: pointer; display: inline-flex; align-items: center; min-height: 32px; }
-.vh { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tbtn.rec { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .notes { display: flex; flex-direction: column; gap: 8px; }
 .note { border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
 .note.fixed { border-left-color: var(--good); }
@@ -219,7 +219,6 @@ button { cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
 
 <div class="app">
   <nav class="side" aria-label="Cuts">
@@ -276,16 +275,13 @@ button { cursor: pointer; }
             <button class="ghost" id="b-unline" title="Not about the script any more" aria-label="Detach from the script line">✕</button></p>
           <textarea id="noteText" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
           <div class="take" id="takeRow" hidden>
-            <div class="crow" id="takeAsk">
-              <label class="ghost tbtn" for="takeCap" id="takeCapL">🎙 Record how it should sound</label>
-              <label class="ghost tbtn" for="takePick" id="takePickL">Pick a file</label>
-            </div>
-            <input type="file" class="vh" id="takeCap" accept="audio/*" capture tabindex="-1">
-            <input type="file" class="vh" id="takePick" accept="audio/*,video/*" tabindex="-1">
+            <div class="crow" id="takeAsk"><button class="ghost tbtn" id="b-rec">🎙 Record how it should sound</button></div>
+            <div class="crow" id="takeRecording" hidden><button class="ghost tbtn rec" id="b-stop">■ Stop</button>
+              <span class="hint mono" id="recLen">0 s</span></div>
             <div class="take" id="takeHave" hidden>
               <audio id="takeAudio" controls preload="metadata"></audio>
               <div class="crow"><span class="hint mono" id="takeLen"></span>
-                <label class="ghost tbtn" for="takeCap" id="takeRedo">Redo</label>
+                <button class="ghost tbtn" id="takeRedo">Redo</button>
                 <button class="ghost" id="b-untake">Remove</button></div>
             </div>
           </div>
@@ -337,7 +333,7 @@ button { cursor: pointer; }
               sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
-              assets: null, take: null, takeGen: 0, takeBusy: false, saving: false };
+              assets: null, mic: false, take: null, takeBusy: false, saving: false };
   const vid = $("vid");
 
   const fmt = (t) => {
@@ -747,127 +743,68 @@ button { cursor: pointer; }
     else if (ev.key === "r") { ev.preventDefault(); $("b-region").click(); }
   });
 
-  // ---------- keeping only the sound
-  // A phone recording becomes an audio-only file for the asset store, and the picture never leaves the phone. An
-  // AAC track (iPhone camera .MOV, Voice Memos, Android recorders) is copied untouched into a plain M4A the page
-  // writes itself: iPhones can't play fragmented mp4 and Web Audio can't decode their .MOV. Anything else is decoded
-  // and re-recorded in real time. Stored as video/mp4 or video/webm, the types the asset store takes.
-  const TAKE_MAX = 20 * 1024 * 1024;
-  const takeErr = (name) => Object.assign(new Error(name), { name });
-  const within = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(takeErr("Unusable")), ms))]);
-  let actx = null;
-  function wakeAudio() {  // call from the tap that opens a picker: iOS only starts audio from a gesture
-    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch { actx = null; }
+  // ---------- live recording
+  // A take is recorded live from the microphone, never taken from a file. claude.ai doesn't let its pages use the
+  // microphone today (the frame's permissions policy blocks it, on desktop and in the iOS app), so the button shows
+  // only where the mic is usable and lights up by itself if that changes.
+  const TAKE_MAX = 20 * 1024 * 1024, TAKE_SECONDS = 180;
+  const REC_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  async function micUsable() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return false;
+    if (document.featurePolicy?.allowsFeature && !document.featurePolicy.allowsFeature("microphone")) return false;
+    try { if ((await navigator.permissions.query({ name: "microphone" })).state === "denied") return false; } catch {}
+    return true;
   }
-  const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
-  const u16 = (n) => [(n >>> 8) & 255, n & 255];
-  const cc = (s) => [...s].map((c) => c.charCodeAt(0));
-  const cat = (parts) => { const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
-  const bytes = (...xs) => Uint8Array.from(xs.flat());
-  const box = (type, ...parts) => { const body = cat(parts); return cat([bytes(u32(body.length + 8), cc(type)), body]); };
-  const fbox = (type, flags, ...parts) => box(type, bytes(0, u32(flags).slice(1)), ...parts);   // version 0
-  const MATRIX = bytes([0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000].flatMap(u32));
-  function writeM4a({ timescale, sampleRate, channels, esds, sizes, durations, data }) {
-    const total = durations.reduce((a, d) => a + d, 0);
-    const stts = [];
-    for (const d of durations) { const last = stts[stts.length - 1]; if (last && last[1] === d) last[0]++; else stts.push([1, d]); }
-    const ftyp = box("ftyp", bytes(cc("M4A "), u32(0), cc("M4A "), cc("mp42"), cc("isom")));
-    const moov = (offset) => box("moov",
-      fbox("mvhd", 0, bytes(u32(0), u32(0), u32(timescale), u32(total), u32(0x10000), u16(0x100), u16(0), u32(0), u32(0)), MATRIX, bytes(Array(24).fill(0), u32(2))),
-      box("trak",
-        fbox("tkhd", 3, bytes(u32(0), u32(0), u32(1), u32(0), u32(total), u32(0), u32(0), u16(0), u16(0), u16(0x100), u16(0)), MATRIX, bytes(u32(0), u32(0))),
-        box("mdia",
-          fbox("mdhd", 0, bytes(u32(0), u32(0), u32(timescale), u32(total), u16(0x55c4), u16(0))),
-          fbox("hdlr", 0, bytes(u32(0), cc("soun"), u32(0), u32(0), u32(0), cc("Sound"), 0)),
-          box("minf",
-            fbox("smhd", 0, bytes(u16(0), u16(0))),
-            box("dinf", fbox("dref", 0, bytes(u32(1)), fbox("url ", 1))),
-            box("stbl",
-              fbox("stsd", 0, bytes(u32(1)), box("mp4a", bytes(Array(6).fill(0), u16(1), u32(0), u32(0), u16(channels), u16(16), u16(0), u16(0), u16(Math.min(sampleRate, 65535)), u16(0)), esds)),
-              fbox("stts", 0, bytes(u32(stts.length), stts.flatMap(([c, d]) => [...u32(c), ...u32(d)]))),
-              fbox("stsc", 0, bytes(u32(1), u32(1), u32(sizes.length), u32(1))),
-              fbox("stsz", 0, bytes(u32(0), u32(sizes.length), sizes.flatMap((n) => u32(n)))),
-              fbox("stco", 0, bytes(u32(1), u32(offset))))))));
-    const head = moov(0).length;   // moov before mdat: its one chunk starts right after the mdat header
-    return new Blob([ftyp, moov(ftyp.length + head + 8), bytes(u32(data.length + 8), cc("mdat")), data], { type: "video/mp4" });
-  }
-  // the AAC decoder config: the first esds box after an mp4a entry inside moov (works for mp4 and QuickTime's wave)
-  function esdsOf(buf) {
-    const v = new DataView(buf), n = buf.byteLength, str = (o) => String.fromCharCode(...new Uint8Array(buf, o, 4));
-    let o = 0, moov = null;
-    while (o + 8 <= n) {
-      let size = v.getUint32(o);
-      if (size === 1 && o + 16 <= n) size = Number(v.getBigUint64(o + 8)); else if (size === 0) size = n - o;
-      if (size < 8) break;
-      if (str(o + 4) === "moov") { moov = [o, Math.min(n, o + size)]; break; }
-      o += size;
+  let rec = null;   // the recording in progress: {recorder, stream, parts, started, at, timer}
+  async function startTake() {
+    if (rec || !S.line || S.takeBusy) return;
+    dropTake();
+    const at = { sel: S.sel, i: S.line.i };
+    S.takeBusy = at; updateStamp();
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (err) {
+      if (S.takeBusy === at) S.takeBusy = false;
+      S.mic = false; $("composerHint").textContent = "The microphone isn't available here."; updateStamp(); return;
     }
-    if (!moov) return null;
-    const u8 = new Uint8Array(buf, moov[0], moov[1] - moov[0]);
-    const find = (s, from) => { for (let i = from; i + 4 <= u8.length; i++) if (u8[i] === s.charCodeAt(0) && u8[i + 1] === s.charCodeAt(1) && u8[i + 2] === s.charCodeAt(2) && u8[i + 3] === s.charCodeAt(3)) return i; return -1; };
-    const a = find("mp4a", 0), e = a < 0 ? -1 : find("esds", a);
-    if (e < 4) return null;
-    const size = new DataView(buf, moov[0] + e - 4, 4).getUint32(0);
-    return e - 4 + size <= u8.length ? u8.slice(e - 4, e - 4 + size) : null;
+    if (S.takeBusy !== at) { stream.getTracks().forEach((t) => t.stop()); return; }   // the note left its line meanwhile
+    const mime = REC_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
+    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const r = rec = { recorder, stream, parts: [], started: Date.now(), at, timer: 0 };
+    recorder.ondataavailable = (e) => { if (e.data.size) r.parts.push(e.data); };
+    recorder.onstop = () => finishTake(r);
+    recorder.start(1000);
+    $("recLen").textContent = "0 s";
+    r.timer = setInterval(() => {
+      const secs = (Date.now() - r.started) / 1000;
+      $("recLen").textContent = Math.floor(secs) + " s";
+      if (secs >= TAKE_SECONDS) stopTake(false);
+    }, 250);
+    $("composerHint").textContent = "Recording… say the line, then Stop.";
+    updateStamp();
   }
-  function copyAac(file, buf) {
-    return new Promise((resolve, reject) => {
-      if (!window.MP4Box) return reject(takeErr("NotAac"));
-      const mp4 = MP4Box.createFile();
-      let track = null;
-      const sizes = [], durations = [], chunks = [];
-      mp4.onError = () => reject(takeErr("NotAac"));
-      mp4.onReady = (info) => {
-        track = (info.audioTracks || [])[0];
-        if (!track || !/^mp4a/.test(track.codec)) return reject(takeErr("NotAac"));
-        const esds = esdsOf(buf);
-        if (!esds) return reject(takeErr("NotAac"));
-        mp4.onSamples = (id, user, samples) => {
-          for (const s of samples) { sizes.push(s.size); durations.push(s.duration); chunks.push(s.data); }
-          if (sizes.length < track.nb_samples) return;
-          const seconds = durations.reduce((a, d) => a + d, 0) / track.timescale;
-          resolve({ blob: writeM4a({ timescale: track.timescale, sampleRate: track.audio.sample_rate, channels: track.audio.channel_count,
-            esds, sizes, durations, data: cat(chunks) }), seconds });
-        };
-        mp4.setExtractionOptions(track.id, null, { nbSamples: track.nb_samples });
-        mp4.start();
-      };
-      const copy = buf.slice(0); copy.fileStart = 0;
-      mp4.appendBuffer(copy); mp4.flush();
-      setTimeout(() => reject(takeErr(track ? "Unusable" : "NotAac")), track ? 10000 : 0);   // no moov: not an mp4
-    });
+  function stopTake(discard) {
+    const r = rec; if (!r) return;
+    rec = null; r.discard = discard; r.seconds = (Date.now() - r.started) / 1000;
+    clearInterval(r.timer);
+    r.stream.getTracks().forEach((t) => t.stop());
+    if (r.recorder.state !== "inactive") r.recorder.stop(); else finishTake(r);
   }
-  async function reRecord(file, buf) {
-    const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => window.MediaRecorder?.isTypeSupported?.(t));
-    if (!actx || !mime) throw takeErr("Unusable");
-    await within(actx.resume(), 3000);   // after the picker, iOS may never resume outside a gesture
-    let audio;
-    try { audio = await within(actx.decodeAudioData(buf.slice(0)), 20000); } catch { throw takeErr("Unusable"); }
-    if (!audio.duration) throw takeErr("Unusable");
-    if (audio.duration > 300) throw takeErr("TooLong");   // re-recording runs in real time
-    const src = actx.createBufferSource(); src.buffer = audio;
-    const dest = actx.createMediaStreamDestination(); src.connect(dest);
-    const rec = new MediaRecorder(dest.stream, { mimeType: mime, audioBitsPerSecond: 128000 });
-    const parts = [];
-    rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
-    const stopped = new Promise((r) => { rec.onstop = r; });
-    const ended = new Promise((ok, no) => { src.onended = ok; setTimeout(() => no(takeErr("Unusable")), (audio.duration + 5) * 1000); });
-    rec.start(); src.start();
-    try { await ended; } finally { await new Promise((r) => setTimeout(r, 150)); rec.stop(); await stopped; }
-    return { blob: new Blob(parts, { type: mime.startsWith("audio/mp4") ? "video/mp4" : "video/webm" }), seconds: audio.duration };
+  function finishTake(r) {
+    if (S.takeBusy === r.at) S.takeBusy = false;
+    const type = (r.recorder.mimeType || "").startsWith("audio/mp4") ? "video/mp4" : "video/webm";   // types the asset store takes
+    const blob = new Blob(r.parts, { type });
+    if (r.discard || !S.assets || movedFrom(r.at)) { updateStamp(); return; }
+    if (!blob.size) { $("composerHint").textContent = "Nothing was recorded. Try again."; updateStamp(); return; }
+    if (blob.size > TAKE_MAX) { $("composerHint").textContent = "Too long: keep a take under a few minutes."; updateStamp(); return; }
+    const upload = S.assets.upload(blob, { type });
+    upload.catch(() => {});
+    S.take = { blob, seconds: r.seconds, type, upload, at: r.at, url: URL.createObjectURL(blob) };
+    $("takeAudio").src = S.take.url;
+    $("composerHint").textContent = "Got it. Play it back, then add the note.";
+    updateStamp();
   }
-  // → {blob, seconds}; rejects with name "Unusable" (no usable sound) or "TooLong" (over the store's 20 MiB)
-  async function audioOnly(file) {
-    const buf = await file.arrayBuffer();
-    let out = null;
-    try { out = await copyAac(file, buf); } catch (e) { if (e.name !== "NotAac") throw e; }
-    out = out || await reRecord(file, buf);
-    if (out.blob.size > TAKE_MAX) throw takeErr("TooLong");
-    return out;
-  }
-  const TAKE_REFUSED = { Unusable: "This recording's format can't be used; record again with the phone, or pick an m4a/mp3/wav.",
-                         TooLong: "Too long: keep a take under a few minutes." };
-  // ---------- end of keeping only the sound
+  // ---------- end of live recording
 
   // ---------- composer
   function updateStamp() {
@@ -988,9 +925,11 @@ button { cursor: pointer; }
   const movedFrom = (at) => !S.line || at.sel !== S.sel || at.i !== S.line.i;
   function renderTake() {
     // a take belongs to the line it was recorded for: detached, another line or another cut, it goes
+    if (rec && movedFrom(rec.at)) stopTake(true);
     if (S.take && movedFrom(S.take.at)) dropTake();
-    if (S.takeBusy && movedFrom(S.takeBusy)) { S.takeGen++; S.takeBusy = false; $("composerHint").textContent = TYPE_HINT; }
-    $("takeRow").hidden = !(S.line && S.assets && S.canWrite) || S.saving;
+    if (S.takeBusy && movedFrom(S.takeBusy)) { S.takeBusy = false; $("composerHint").textContent = TYPE_HINT; }
+    $("takeRow").hidden = !(S.line && S.assets && S.canWrite && S.mic) || S.saving;
+    $("takeRecording").hidden = !rec;
     $("takeAsk").hidden = !!S.take || !!S.takeBusy;
     $("takeHave").hidden = !S.take;
     if (S.take) $("takeLen").textContent = S.take.seconds.toFixed(1) + " s";
@@ -1002,34 +941,13 @@ button { cursor: pointer; }
   }
   function dropTake() {   // a take that won't be on a note: its upload is deleted
     const t = S.take; if (!t) return;
-    releaseTake(t); S.takeGen++;
+    releaseTake(t);
     t.upload.then((a) => S.assets && S.assets.delete(a.id)).catch(() => {});
     renderTake();
   }
-  async function takeFrom(file) {
-    if (!S.line) return;
-    dropTake();
-    const gen = ++S.takeGen, at = { sel: S.sel, i: S.line.i };
-    S.takeBusy = at; $("composerHint").textContent = "Keeping only the sound…"; updateStamp();
-    try {
-      const out = await audioOnly(file);
-      if (gen !== S.takeGen || !S.assets) return;   // replaced, or the note left its line meanwhile
-      const upload = S.assets.upload(out.blob, { type: out.blob.type });
-      upload.catch(() => {});
-      S.take = { blob: out.blob, seconds: out.seconds, type: out.blob.type, upload, at, url: URL.createObjectURL(out.blob) };
-      $("takeAudio").src = S.take.url;
-      $("composerHint").textContent = "Got it. Play it back, then add the note.";
-    } catch (err) {
-      if (gen === S.takeGen) $("composerHint").textContent = TAKE_REFUSED[err?.name] || "Couldn't read that recording (" + (err?.name || "error") + ").";
-    } finally {
-      if (gen === S.takeGen) S.takeBusy = false;
-      updateStamp();
-    }
-  }
-  for (const id of ["takeCapL", "takePickL", "takeRedo"]) $(id).addEventListener("click", wakeAudio);
-  for (const id of ["takeCap", "takePick"]) {
-    $(id).onchange = (ev) => { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) takeFrom(f); };
-  }
+  $("b-rec").onclick = startTake;
+  $("takeRedo").onclick = startTake;
+  $("b-stop").onclick = () => stopTake(false);
   $("b-untake").onclick = () => { dropTake(); $("composerHint").textContent = "Take removed."; };
 
   // ---------- regions: boxes on the frame, as fractions of the picture (not of the letterboxed element)
@@ -1266,6 +1184,7 @@ button { cursor: pointer; }
     const user = await use("user");
     S.db = db;
     S.assets = await use("assets");
+    S.mic = !!S.assets && await micUsable();
     if (!db) { $("title").textContent = "Sign in to review"; banner("This review room keeps its cuts and notes in claude.ai. Open it while signed in.", true); updateStamp(); return; }
     S.me = user ? await user.id() : null;
     const cw = user ? await user.can("data.write") : null;

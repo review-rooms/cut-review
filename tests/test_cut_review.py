@@ -548,22 +548,19 @@ def page_html(room_dir) -> str:
     return out.read_text()
 
 
-def test_page_keeps_only_the_sound_without_reencoding(room_dir, capsys):
+def test_page_records_takes_live_with_no_file_upload(room_dir, capsys):
     html = page_html(room_dir)
-    assert html.count("<script src=") == 1 and 'src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"' in html
-    assert '"M4A "' in html and "function writeM4a(" in html and "async function audioOnly(" in html
-    assert "This recording's format can't be used; record again with the phone, or pick an m4a/mp3/wav." in html
-    assert "Too long: keep a take under a few minutes." in html
+    assert 'type="file"' not in html and "<script src=" not in html     # no picker, no camera, no mp4 parsing
+    assert "getUserMedia({ audio: true })" in html and "new MediaRecorder(" in html
+    assert 'allowsFeature("microphone")' in html                         # the button shows only where the mic is usable
     assert "innerHTML" not in html and html.startswith("<title>")
 
 
 def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
     html = page_html(room_dir)
-    assert html.count("🎙 Record how it should sound") == 1 and html.count(">Pick a file<") == 1
-    assert 'id="takeCap" accept="audio/*" capture' in html and 'id="takePick" accept="audio/*,video/*"' in html
-    assert 'id="takeRow" hidden' in html                      # nothing about recording shows until a note is on a line
+    assert html.count("🎙 Record how it should sound") == 1 and "Pick a file" not in html
+    assert 'id="takeRow" hidden' in html and 'id="b-rec"' in html and 'id="b-stop"' in html
     assert "take: S.line && take && asset" in html and 'use("assets")' in html
-    assert "Keeping only the sound…" in html
 
 
 @needs_ffmpeg

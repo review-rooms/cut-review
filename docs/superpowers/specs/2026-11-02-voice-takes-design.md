@@ -23,7 +23,20 @@ Converting the owner's intonation into the persona's voice is the project's job,
 | AMR (`.3gp` from old Android recorders) cannot be read by any method in Chrome. | Android emulator |
 | Takes come in quiet (iPhone camera mic at arm's length: peak −22.5 dB, mean −41.8 dB). | test 3 take |
 
-## The owner's flow (page)
+## Revision (3 Nov 2026): live recording only
+
+The owner asked for no file upload: the phone's "record" picker is a file input, and on iPhone it opens the Camera.
+Pages can't record live on claude.ai today: a mic check (`Live mic check` artifact) on the Claude desktop app, Chrome
+on Mac and the Claude iOS app got `NotAllowedError` with no prompt, the frame's permissions policy disallows the
+microphone (`allowsFeature("microphone")` false on desktop), the room's `permissions.request(["microphone"])`
+answers `unavailable`, and publishing with a `microphone` capability is refused on contract 0.2.96 (the newest).
+
+So the page records live only (`getUserMedia` + `MediaRecorder`), shows the button only where the mic is usable, and
+the file paths below (picker, camera `.MOV`, the M4A track copy, the Web Audio re-recording, mp4box.js) are removed.
+On claude.ai the button is hidden until Claude allows the mic. Recording today goes through a separate, experimental
+local recorder (its own design and PR). The rest of this spec (record field, CLI, skill) is unchanged.
+
+## The owner's flow (page, as first designed; superseded by the revision above)
 
 1. Start a note on a script line, a word or a span, as today. The note form shows, under the text box,
    **🎙 Record how it should sound** and **Pick a file**. Nothing about recording shows anywhere else: no buttons
@@ -41,7 +54,7 @@ Converting the owner's intonation into the persona's voice is the project's job,
 
 Writing a note's text stays required; the take is an addition ("say it like this"), never the whole note.
 
-## Keeping only the sound (page)
+## Keeping only the sound (page, removed in the revision above)
 
 `audioOnly(file) → {blob, seconds}`, in a small self-contained part of the page:
 

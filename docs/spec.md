@@ -45,15 +45,14 @@ with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a p
 deep links by `#<key>`, light and dark themes.
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
-and only then, the note form offers **🎙 Record how it should sound** (the phone's recorder, `accept="audio/*"
-capture`) and **Pick a file**, for people who can upload assets (Editors). The page keeps only the sound: an AAC
-track (an iPhone camera `.MOV`, an m4a) is copied untouched into a plain M4A the page writes (`ftyp`, `moov`,
-`mdat`; parsed with mp4box.js 0.5.2, the page's only external script); other audio is decoded and re-recorded with
-`MediaRecorder`; AMR and silent files are refused, and so is anything over 20 MiB. The take uploads at once (as
-`video/mp4` or `video/webm`), shows as a player with Redo and Remove, and Add note waits for the upload. Redo,
-Remove, detaching the line and switching cut delete the uploaded take; deleting your own note deletes its take.
-Saved notes with a take show a 🎙 button with its length and a player; script lines with one show 🎙 beside their
-note count.
+and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone
+(`getUserMedia` + `MediaRecorder`, Stop, at most 3 minutes) for people who can upload assets (Editors). There is no
+file upload. The button shows only where the mic is usable (permissions policy allows it and the permission isn't
+denied); claude.ai blocks the mic in its frames today, on desktop and in the iOS app, so it stays hidden there until
+that changes. The take uploads at once (as `video/mp4` or `video/webm`), shows as a player with Redo and Remove, and
+Add note waits for the upload. Redo, Remove, detaching the line, moving to another line or cut, and leaving the line
+mid-recording drop the take (an uploaded one is deleted); deleting your own note deletes its take. Saved notes with a
+take show a 🎙 button with its length and a player; script lines with one show 🎙 beside their note count.
 
 ### 2. The CLI (`cut-review`, Python 3.10+, standard library only; ffmpeg/ffprobe optional)
 

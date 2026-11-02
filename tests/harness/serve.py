@@ -8,6 +8,8 @@ ranges so videos seek. Notes and verdicts written on the page live in memory unt
 `window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved.
 Files the page uploads (voice takes) go to `.cut-review/harness-assets/` and are served at `/_blob/<id>` too;
 `window.__assets` lists uploads and deletions. `?noassets` / `?nodownloads` leave those capabilities out.
+`?mic=fake` gives the page a microphone that plays a tone (as if the frame allowed the mic); `?mic=blocked`
+answers like claude.ai today (permission denied).
 Nothing here talks to claude.ai.
 """
 from __future__ import annotations
@@ -71,6 +73,19 @@ MOCK = r"""<script>
     },
     async delete(id) { await fetch("/_assets?delete=" + id, { method: "POST" }); window.__assets.push({ op: "delete", id }); },
   };
+  // microphone stand-ins: claude.ai blocks the mic in its frames, so the page must also work without one
+  const mic = (location.search.match(/mic=(\w+)/) || [])[1];
+  if (mic === "fake" || mic === "blocked") {
+    const realQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => d && d.name === "microphone" ? Promise.resolve({ state: mic === "fake" ? "prompt" : "denied" }) : realQuery(d);
+    navigator.mediaDevices.getUserMedia = async () => {
+      if (mic === "blocked") throw Object.assign(new Error("Permission denied"), { name: "NotAllowedError" });
+      const ac = new AudioContext(); await ac.resume();
+      const osc = ac.createOscillator(), dest = ac.createMediaStreamDestination();
+      osc.frequency.value = 330; osc.connect(dest); osc.start();
+      return dest.stream;
+    };
+  }
   const caps = { db, user, downloads, assets };
   window.claude = { use: (n) => new Promise((r) => setTimeout(() => r(caps[n] ?? null), 30)) };
 })();
