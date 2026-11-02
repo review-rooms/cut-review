@@ -274,6 +274,13 @@ def test_todo_shows_script_lines_and_quotes(room_dir, tmp_path):
     assert '[script line 8] · Line gone' in out          # a line the script no longer has still shows its number
 
 
+def test_page_script_scroll_respects_reduced_motion(room_dir, capsys):
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    assert 'behavior: "smooth"' not in html and "prefers-reduced-motion: reduce)\").matches" in html
+
+
 def test_region_of_clamps_and_rejects_bad_regions():
     assert region_of({"region": {"x": 0.8, "y": -0.1, "w": 0.5, "h": 0.3}}) == (0.8, 0.0, pytest.approx(0.2), 0.3)
     assert region_of({"region": {"x": 0.2, "y": 0.2, "w": 0, "h": 0.3}}) is None

@@ -426,6 +426,8 @@ button { cursor: pointer; }
     return out;
   }
   const scriptOf = (e) => (e && e.script) || [];
+  // scrolling the script glides, unless the viewer asked for reduced motion
+  const glide = () => (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
   // the words selected inside one line's text (cues aside), or null
   function quoteIn(say) {
     const sel = window.getSelection && window.getSelection();
@@ -506,7 +508,7 @@ button { cursor: pointer; }
     if (!S.follow || Date.now() - S.scriptTouched < 4000 || $("scriptCard").hidden) return;
     const box = $("scriptBox"), row = rows[now];
     const top = box.scrollTop + row.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3;
-    box.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    box.scrollTo({ top: Math.max(0, top), behavior: glide() });
   }
   function renderLog(e) {
     const log = e.changes || [];
@@ -874,7 +876,7 @@ button { cursor: pointer; }
   function showLine(i) {
     const row = $("script").querySelector('tr[data-i="' + i + '"]'); if (!row) return;
     const box = $("scriptBox");
-    box.scrollTo({ top: Math.max(0, box.scrollTop + row.getBoundingClientRect().top - box.getBoundingClientRect().top - 12), behavior: "smooth" });
+    box.scrollTo({ top: Math.max(0, box.scrollTop + row.getBoundingClientRect().top - box.getBoundingClientRect().top - 12), behavior: glide() });
     S.scriptTouched = Date.now();
   }
   function act(label, fn) { const b = el("button", "ghost", label); b.onclick = fn; return b; }
