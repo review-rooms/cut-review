@@ -159,7 +159,16 @@ button { cursor: pointer; }
 .script td:last-child { width: 1%; white-space: nowrap; text-align: right; }
 .script tr.now td { background: var(--accent-soft); }
 .script tr.noted td:first-child { border-left-color: var(--warn); }
-.script .say { cursor: text; line-height: 1.5; }
+.script .say { cursor: text; line-height: 1.6; }
+.script .w { border-radius: 3px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.script .w:hover { background: var(--sunk); }
+.script .w.hl { text-decoration: underline wavy var(--bad); text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+.script .w.hl.fixed { text-decoration-color: var(--good); }
+.script .w.pick { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: 0 0 0 1px var(--accent); }
+.selbtn { position: fixed; z-index: 30; border: 0; border-radius: 99px; padding: 6px 12px; font-size: 13px; font-weight: 700;
+  background: var(--ink); color: var(--panel); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); max-width: min(320px, 80vw);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .script .cue { display: inline-block; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; line-height: 1.4; color: var(--muted);
   border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin: 0 4px 0 0; white-space: nowrap; user-select: none; }
 .script .tbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; }
@@ -172,7 +181,8 @@ button { cursor: pointer; }
 .linetarget b { color: var(--ink); font-weight: 600; }
 .linetarget .q { font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .note .quote { font-style: italic; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; margin: 2px 0 4px; }
-@media (pointer: coarse) { .script .lbtn, .follow { padding: 7px 12px; } .script .tbtn { padding: 8px 0; } }
+@media (pointer: coarse) { .script .lbtn, .follow { padding: 7px 12px; } .script .tbtn { padding: 8px 0; }
+  .script .say { line-height: 2.1; } .script .w { padding: 6px 1px; margin: -6px -1px; } }
 .changes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
@@ -281,7 +291,7 @@ button { cursor: pointer; }
           <h3><span id="scriptLabel">Script</span> <span class="mono" id="scriptLen"></span>
             <button class="follow" id="b-follow" aria-pressed="true" title="Scroll the script with the video">Follow</button></h3>
           <div class="scriptbox" id="scriptBox"><table class="script"><tbody id="script"></tbody></table></div>
-          <p class="hint">Select words in a line, then Comment, to note just those words. Click a line to jump there.</p>
+          <p class="hint">Tap a word to comment on it (tap more words, or Shift-click, to take a span). Select a few characters for just those. Tap the time to jump there.</p>
         </div>
 
         <div class="card">
@@ -299,6 +309,7 @@ button { cursor: pointer; }
   </main>
 </div>
 
+<button class="selbtn" id="selBtn" type="button" hidden></button>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -366,7 +377,7 @@ button { cursor: pointer; }
     $("itemSel").hidden = !isSet;
     $("generalLbl").hidden = isSet;
     $("b-region").hidden = isSet;
-    if (changed) { S.stampEnd = null; S.region = null; S.focus = null; S.line = null; renderLineTarget(); setDrawing(false); }
+    if (changed) { S.stampEnd = null; S.region = null; S.focus = null; S.line = null; renderLineTarget(); hideSelBtn(); setDrawing(false); }
     $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
     if (changed) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; S.item = null; }
     $("title").textContent = e.title || e.key;
@@ -415,29 +426,53 @@ button { cursor: pointer; }
   });
 
   // ---------- script and change log
-  // a script line's text with its delivery cues ("[whisper]") as tags, set with textContent only
-  function sayNodes(text) {
-    const out = [];
-    for (const part of String(text || "").split(/(\[[^\]]*\])/)) {
+  // A script line's spoken text is its text with the delivery cues ("[whisper]") taken out and white space collapsed.
+  // Notes on words keep character offsets into it (qStart, qEnd), so a word that occurs twice is still one place.
+  // The CLI computes the same string (notes.spoken): keep the two in step.
+  const spokenOf = (text) => String(text || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+  // the line rendered as cue tags and word spans that carry their offsets in the spoken text (textContent only)
+  function lineNodes(text) {
+    const raw = String(text || ""), spoken = spokenOf(raw);
+    const words = [...spoken.matchAll(/\S+/g)].map((m) => ({ s: m.index, e: m.index + m[0].length }));
+    const out = []; let k = 0;
+    for (const part of raw.split(/(\[[^\]]*\])/)) {
       if (!part) continue;
-      if (/^\[[^\]]*\]$/.test(part)) out.push(el("span", "cue", part.slice(1, -1).trim()));
-      else out.push(document.createTextNode(part));
+      if (/^\[[^\]]*\]$/.test(part)) { out.push(el("span", "cue", part.slice(1, -1).trim())); continue; }
+      for (const m of part.matchAll(/\S+/g)) {
+        const w = words[k++]; if (!w) break;
+        if (out.length) out.push(document.createTextNode(" "));
+        const sp = el("span", "w", m[0]); sp.dataset.s = w.s; sp.dataset.e = w.e; out.push(sp);
+      }
     }
     return out;
   }
   const scriptOf = (e) => (e && e.script) || [];
   // scrolling the script glides, unless the viewer asked for reduced motion
   const glide = () => (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
-  // the words selected inside one line's text (cues aside), or null
-  function quoteIn(say) {
+  // the characters selected inside one line, as {qs, qe, quote} in its spoken text, or null
+  function selectionIn(say, i) {
     const sel = window.getSelection && window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
     const r = sel.getRangeAt(0);
-    if (!say.contains(r.commonAncestorContainer)) return null;
-    const frag = r.cloneContents();
-    for (const c of frag.querySelectorAll ? frag.querySelectorAll(".cue") : []) c.remove();
-    const q = frag.textContent.replace(/\s+/g, " ").trim();
-    return q || null;
+    if (!say.contains(r.commonAncestorContainer) && r.commonAncestorContainer !== say) return null;
+    const hit = [...say.querySelectorAll(".w")].filter((w) => r.intersectsNode(w));
+    if (!hit.length) return null;
+    const first = hit[0], last = hit[hit.length - 1];
+    const inside = (w, node) => w === node || w.contains(node);
+    let qs = +first.dataset.s, qe = +last.dataset.e;
+    if (inside(first, r.startContainer) && r.startContainer.nodeType === 3) qs += Math.min(r.startOffset, first.textContent.length);
+    if (inside(last, r.endContainer) && r.endContainer.nodeType === 3) qe = +last.dataset.s + Math.min(r.endOffset, last.textContent.length);
+    const spoken = spokenOf(scriptOf(entryOf(S.sel))[i]?.text ?? "");
+    while (qs < qe && spoken[qs] === " ") qs++;
+    while (qe > qs && spoken[qe - 1] === " ") qe--;
+    return qe > qs ? { qs, qe, quote: spoken.slice(qs, qe) } : null;
+  }
+  // a note's span in its line: its offsets when they still match the line, else the first place its quote occurs
+  function spanOf(n, spoken) {
+    const q = typeof n.quote === "string" ? n.quote : "";
+    if (Number.isInteger(n.qStart) && Number.isInteger(n.qEnd) && n.qEnd > n.qStart && (!q || spoken.slice(n.qStart, n.qEnd) === q)) return [n.qStart, n.qEnd];
+    const at = q ? spoken.indexOf(q) : -1;
+    return at >= 0 ? [at, at + q.length] : null;
   }
   function renderScript(e) {
     const tb = $("script"); tb.replaceChildren();
@@ -448,48 +483,113 @@ button { cursor: pointer; }
       const from = +r.from || 0, to = r.to != null ? +r.to : from;
       const tr = el("tr"); tr.dataset.from = from; tr.dataset.to = to; tr.dataset.i = i;
       const t = el("td"); const tb_ = el("button", "tbtn mono", fmt(from)); tb_.onclick = () => seek(from, true); t.append(tb_);
-      const say = el("td", "say"); say.append(...sayNodes(r.text ?? r.say ?? ""));
-      say.onclick = () => { if (!quoteIn(say)) seek(from, false); };
+      const say = el("td", "say"); say.append(...lineNodes(r.text ?? r.say ?? ""));
+      say.addEventListener("click", (ev) => {
+        if (selectionIn(say, i)) return;                    // a selection belongs to the floating Comment button
+        const w = ev.target.closest(".w");
+        if (w) wordTap(i, w, ev.shiftKey); else seek(from, false);
+      });
       const c = el("td");
       const n = el("span", "ncount"); n.title = "Notes on this line";
-      const b = el("button", "lbtn", "Comment"); b.title = "Comment on this line, or on the words you selected in it";
+      const b = el("button", "lbtn", "Comment"); b.title = "Comment on the whole line (or on the characters you selected in it)";
       let held = null;                       // the selection, read before the click can clear it
-      b.addEventListener("pointerdown", () => { held = quoteIn(say); });
-      b.onclick = () => { pickLine(i, held ?? quoteIn(say)); held = null; };
+      b.addEventListener("pointerdown", () => { held = selectionIn(say, i); });
+      b.onclick = () => { pickLine(i, held ?? selectionIn(say, i)); held = null; };
       c.append(n, b);
       tr.append(t, say, c); tb.append(tr);
     });
     renderScriptMarks();
   }
-  // which lines carry notes (open or fixed), without rebuilding the rows (a selection survives)
+  // tapping a word comments on it; tapping more words in the same line (before typing) or Shift-clicking takes the span
+  // from the first to the last; tapping a word someone already commented on shows that note instead
+  function wordTap(i, w, extend) {
+    const s0 = +w.dataset.s, e0 = +w.dataset.e;
+    const hl = w.dataset.note && S.notes.find((n) => n.id === w.dataset.note);
+    if (hl && !extend && !(S.line && S.line.i === i)) { flashNote(hl); return; }
+    const cur = S.line && S.line.i === i && S.line.qs != null ? S.line : null;
+    const grow = cur && (extend || !$("noteText").value.trim()) && !(s0 >= cur.qs && e0 <= cur.qe);
+    const qs = grow ? Math.min(cur.qs, s0) : s0, qe = grow ? Math.max(cur.qe, e0) : e0;
+    const spoken = spokenOf(scriptOf(entryOf(S.sel))[i]?.text ?? "");
+    pickLine(i, { qs, qe, quote: spoken.slice(qs, qe) });
+  }
+  // which lines and words carry notes (open or fixed) and which words are picked, without rebuilding the rows
   function renderScriptMarks() {
+    const e = entryOf(S.sel);
     const mine = notesForSel().filter((n) => n.line != null && (n.status === "open" || n.status === "fixed"));
     for (const tr of $("script").querySelectorAll("tr")) {
-      const k = mine.filter((n) => +n.line === +tr.dataset.i).length;
-      tr.classList.toggle("noted", k > 0);
-      const c = tr.querySelector(".ncount"); if (c) c.textContent = k ? String(k) : "";
+      const i = +tr.dataset.i, spoken = spokenOf(scriptOf(e)[i]?.text ?? "");
+      const here = mine.filter((n) => +n.line === i);
+      tr.classList.toggle("noted", here.length > 0);
+      const c = tr.querySelector(".ncount"); if (c) c.textContent = here.length ? String(here.length) : "";
+      const spans = here.map((n) => ({ n, sp: spanOf(n, spoken) })).filter((x) => x.sp);
+      const pick = S.line && S.line.i === i && S.line.qs != null ? [S.line.qs, S.line.qe] : null;
+      for (const w of tr.querySelectorAll(".w")) {
+        const ws = +w.dataset.s, we = +w.dataset.e;
+        const hit = spans.find((x) => x.sp[0] < we && x.sp[1] > ws);
+        w.classList.toggle("hl", !!hit);
+        w.classList.toggle("fixed", !!hit && hit.n.status === "fixed");
+        if (hit) { w.dataset.note = hit.n.id; w.title = "Note: " + String(hit.n.text).slice(0, 120); }
+        else { delete w.dataset.note; w.removeAttribute("title"); }
+        w.classList.toggle("pick", !!pick && pick[0] < we && pick[1] > ws);
+      }
     }
   }
-  function pickLine(i, quote) {
+  function flashNote(n) {
+    focusNote(n);
+    const card = $("notes").querySelector('.note[data-id="' + CSS.escape(n.id) + '"]');
+    if (!card) return;
+    card.scrollIntoView({ block: "nearest", behavior: glide() });
+    card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1600);
+  }
+  // q: {qs, qe, quote} for words or characters of the line, or null for the whole line
+  function pickLine(i, q) {
     const e = entryOf(S.sel), r = scriptOf(e)[i]; if (!r) return;
     const from = +r.from || 0, to = r.to != null ? +r.to : from;
-    S.line = { i, quote: quote || null };
+    S.line = q && q.qe > q.qs ? { i, qs: q.qs, qe: q.qe, quote: q.quote } : { i, qs: null, qe: null, quote: null };
     S.region = null; $("general").checked = false;
     S.stampT = from; S.stampEnd = to - from >= 1 / FPS ? to : null; S.stampLocked = true;
+    hideSelBtn();
+    try { window.getSelection()?.removeAllRanges(); } catch (err) {}
     seek(from, true);
-    renderLineTarget(); updateStamp(); renderMarks(); renderRegions();
-    $("noteText").focus();
+    renderLineTarget(); updateStamp(); renderMarks(); renderRegions(); renderScriptMarks();
+    $("noteText").focus({ preventScroll: true });
+    $("noteText").closest(".card").scrollIntoView({ block: "nearest", behavior: glide() });   // on a phone it sits above the script
   }
   function renderLineTarget() {
     const l = S.line;
     $("lineTarget").hidden = !l;
     if (!l) return;
     $("lineTargetN").textContent = "script line " + (l.i + 1);
-    const r = scriptOf(entryOf(S.sel))[l.i];
-    const plain = String(r?.text ?? "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+    const plain = spokenOf(scriptOf(entryOf(S.sel))[l.i]?.text ?? "");
     $("lineTargetQ").textContent = l.quote ? "“" + l.quote + "”" : plain;
   }
-  $("b-unline").onclick = () => { S.line = null; renderLineTarget(); };
+  $("b-unline").onclick = () => { S.line = null; renderLineTarget(); renderScriptMarks(); };
+  // the floating Comment button: shown at a selection inside one script line, below it (phones show their own
+  // copy/paste menu above a selection)
+  let selFor = null;
+  function hideSelBtn() { $("selBtn").hidden = true; selFor = null; }
+  function placeSelBtn() {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount || $("scriptCard").hidden) return hideSelBtn();
+    const r = sel.getRangeAt(0);
+    const say = (r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement)?.closest(".say");
+    const tr = say && say.closest("tr");
+    if (!tr || !$("script").contains(tr)) return hideSelBtn();
+    const i = +tr.dataset.i, q = selectionIn(say, i);
+    if (!q) return hideSelBtn();
+    selFor = { i, q };
+    const b = $("selBtn"); b.textContent = "Comment on “" + q.quote + "”"; b.hidden = false;
+    const rect = r.getBoundingClientRect();
+    const x = Math.min(Math.max(8, rect.left), window.innerWidth - b.offsetWidth - 8);
+    const below = rect.bottom + 10, y = below + b.offsetHeight > window.innerHeight - 8 ? rect.top - b.offsetHeight - 10 : below;
+    b.style.left = x + "px"; b.style.top = Math.max(8, y) + "px";
+  }
+  let selTimer = 0;
+  document.addEventListener("selectionchange", () => { clearTimeout(selTimer); selTimer = setTimeout(placeSelBtn, 120); });
+  $("scriptBox").addEventListener("scroll", () => { if (!$("selBtn").hidden) placeSelBtn(); }, { passive: true });
+  window.addEventListener("scroll", () => { if (!$("selBtn").hidden) placeSelBtn(); }, { passive: true });
+  $("selBtn").addEventListener("pointerdown", (ev) => ev.preventDefault());   // keep the selection while tapping
+  $("selBtn").onclick = () => { if (selFor) pickLine(selFor.i, selFor.q); };
   // follow along: keep the current line in view unless the reviewer just scrolled the script themselves
   try { S.follow = localStorage.getItem("cutreview.follow") !== "0"; } catch (err) {}
   $("b-follow").setAttribute("aria-pressed", String(S.follow));
@@ -702,13 +802,14 @@ button { cursor: pointer; }
       region: isSet || !S.region ? null : S.region,
       item: isSet ? ($("itemSel").value || null) : null,
       line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
+      qStart: isSet || !S.line || S.line.qs == null ? null : S.line.qs, qEnd: isSet || !S.line || S.line.qe == null ? null : S.line.qe,
       version: e.version || 1, createdAt: new Date().toISOString(),
     };
     $("b-add").disabled = true;
     try {
       await S.db.collection("notes").add(row);
       $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
-      S.line = null; renderLineTarget();
+      S.line = null; renderLineTarget(); renderScriptMarks();
       S.stampT = vid.currentTime || 0;
       updateStamp(); renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";

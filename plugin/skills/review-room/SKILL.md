@@ -51,7 +51,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
    frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; fill To (next to From) in the note form,
    or drag the timeline, for a note on a time range, and dragging on the picture (or "Draw region", `r`) to box the part of the frame a note is about.
-   The script panel follows the video; Comment on a line (or on words selected in it) makes a note on that line.
+   The script panel follows the video: tap a word to comment on it (more taps or Shift-click take a span), select a
+   few characters for just those, or press Comment for the whole line.
 
 ## Apply the owner's notes
 
@@ -60,7 +61,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
    note's database version, so save that text to `.cut-review/export-result.txt`. Then
    `cut-review notes .cut-review/export --result .cut-review/export-result.txt` prints the to-do list grouped by
    cut, with timecodes (`0:05.0–0:09.5` for a range), regions (`[region x 18% y 23%, 47%×21%]`, fractions of the
-   frame), script lines (`[script line 3, on “the quoted words”]`, followed by the line as the room has it now) and
+   frame), script lines (`[script line 3, on “the quoted words”]`, then the line as the room has it now with the
+   exact words in «guillemets», so a word that occurs twice is unambiguous) and
    note ids, and keeps each note's database version for `fix`. A script note is about the words, so fix the script
    (and re-record the voice) rather than the picture.
 2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame

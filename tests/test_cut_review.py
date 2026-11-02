@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from cut_review import cli
-from cut_review.notes import extract_frames, fix_writes, load_export, region_of, save_notes, todo, where
+from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
@@ -279,6 +279,63 @@ def test_page_script_scroll_respects_reduced_motion(room_dir, capsys):
     run(room_dir, "page", "-o", str(out))
     html = out.read_text()
     assert 'behavior: "smooth"' not in html and "prefers-reduced-motion: reduce)\").matches" in html
+
+
+def test_spoken_drops_cues_and_collapses_space():
+    assert spoken("  [whisper] B,  by the [pause] exhaust.\n0 of 6. ") == "B, by the exhaust. 0 of 6."
+    assert spoken("wo[x]rd") == "wo rd"   # a cue inside a word splits it, on the page too
+
+
+def test_word_notes_mark_the_exact_words_even_when_repeated():
+    line = "[calm] 0 of 6 here, then 0 of 6 there."
+    sp = spoken(line)                     # "0 of 6 here, then 0 of 6 there."
+    second = sp.index("0 of 6", 1)
+    note = {"line": 0, "quote": "0 of 6", "qStart": second, "qEnd": second + 6}
+    assert quote_span(note, line) == (second, second + 6)
+    assert marked_line(note, line) == "0 of 6 here, then «0 of 6» there."
+    # a single character is a span too
+    assert marked_line({"line": 0, "quote": "6", "qStart": 5, "qEnd": 6}, line) == "0 of «6» here, then 0 of 6 there."
+
+
+def test_word_notes_survive_a_rewritten_line_or_say_the_words_are_gone():
+    note = {"line": 0, "quote": "exhaust", "qStart": 30, "qEnd": 37}          # offsets from an older wording
+    assert marked_line(note, "B, by the exhaust.") == "B, by the «exhaust»."      # falls back to the quote
+    assert marked_line(note, "B, by the vent.") == "B, by the vent.  (the quoted words are no longer in this line)"
+    assert marked_line({"line": 0, "quote": None}, "[soft] Whole line.") == "Whole line."
+
+
+def test_todo_prints_the_line_with_the_words_marked(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "w": {"id": "w", "version": 1, "data": {"cut": "poll", "t": 0, "tEnd": 3, "line": 0, "quote": "Hoo",
+                                                  "qStart": 0, "qEnd": 3, "text": "Hard H", "status": "open"}},
+    }))
+    out = todo(room, notes)
+    assert '[script line 1, on “Hoo”] · Hard H' in out and "  line: «Hoo»k" in out
+
+
+def test_page_and_cli_agree_on_the_spoken_text(room_dir, capsys):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    fn = next(l for l in html.splitlines() if "const spokenOf" in l).strip()
+    samples = ["  [whisper] B,  by the [pause] exhaust.\n0 of 6. ", "wo[x]rd", "[only a cue]", "Plain line", "a\u00a0b  [x]c"]
+    js = fn + "\nconsole.log(JSON.stringify(" + json.dumps(samples) + ".map(spokenOf)));"
+    got = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+    assert got == [spoken(x) for x in samples]
+
+
+def test_page_stores_word_offsets_and_offers_word_taps(room_dir, capsys):
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    assert "qStart:" in html and "qEnd:" in html            # the note keeps where its words are
+    assert 'addEventListener("selectionchange"' in html     # a selection gets the floating Comment button
+    assert "wordTap(i, w, ev.shiftKey)" in html               # tapping a word comments on it
+    assert "innerHTML" not in html                           # script text and quotes only ever go in as text
 
 
 def test_region_of_clamps_and_rejects_bad_regions():

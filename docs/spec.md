@@ -30,7 +30,7 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
 | `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
 | `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes` | CLI `build` |
-| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words of that line the note is about, or null), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
+| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
@@ -38,8 +38,9 @@ Behaviour carried over from the first room built this way: frame stepping (`,` `
 notes on a time range (the composer's From and To fields, typed or set to the current frame with Now; dragging the
 timeline or `i` / `o` fill them too; shown as a bar) and on a region of the frame
 (drag a box on the picture, or `r` / "Draw region" first; shown on the frame while the playhead is on the note's frame or range), notes filter (open + fixed, all), a script that follows the video (the current line highlighted and kept in view, Follow to
-turn it off; delivery cues such as `[whisper]` shown as tags; click a line to jump there) and takes notes on a line or
-on the words selected in it (Comment), fixed notes show Claude's reply
+turn it off; delivery cues such as `[whisper]` shown as tags; click a line to jump there) and takes notes on a word (tap it;
+tap more words or Shift-click for a span), on any characters (select them, then the floating Comment button), or
+on the whole line (Comment); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
 deep links by `#<key>`, light and dark themes.
 
