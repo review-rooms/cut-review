@@ -19,7 +19,7 @@ record, command or rule changes, in the same commit.
 
 - Versions: a cut or set goes up one version only when its asset ids change, computed from the *confirmed* state
   (written to the database), never from a pending build. Every write to an existing document carries `if_version`.
-- Never put a room's media, notes or `.cut-review/` state into this repo (examples keep only `room.json`).
+- Never put a room's media, notes or `.cut-review/` state into this repo (examples keep `room.json`, a README and a script that generates placeholder media; renders stay out).
 - The page treats note text as untrusted: set it with `textContent`, never `innerHTML`.
 - Tests: every behaviour change gets a unit test in `tests/`; regression tests are mutation-checked (put the bug
   back, see the test fail, restore). Page changes get a run in the harness (`tests/harness/`) at desktop and 375 px,

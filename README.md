@@ -32,8 +32,8 @@ claude plugin install cut-review@cut-review
 ```
 
 The plugin adds the `review-room` skill, which teaches any session the whole loop. The skill runs the CLI with
-`uvx --from git+https://github.com/review-rooms/cut-review cut-review` (needs [uv](https://docs.astral.sh/uv/) and
-read access to this repo), or from a checkout with `uv run --project ~/Dev/cut-review cut-review`.
+`uvx --from git+https://github.com/review-rooms/cut-review cut-review` (needs [uv](https://docs.astral.sh/uv/)),
+or from a checkout with `uv run --project ~/Dev/cut-review cut-review`.
 
 ## Quickstart
 
@@ -78,7 +78,7 @@ list and frames a session can look at.
 | `plugin/` | The Claude Code plugin: the `review-room` skill. |
 | `.claude-plugin/marketplace.json` | Makes this repo a plugin marketplace. |
 | `docs/spec.md` | The design: records, state, commands. |
-| `examples/` | Example rooms (only `room.json`; media and state stay local). |
+| `examples/` | Example rooms: `room.json` plus a script that makes placeholder media; renders and state stay local. Try `examples/launch-cuts`. |
 | `tests/` | Unit tests (`uv run pytest`) and the page harness. |
 
 ## Develop

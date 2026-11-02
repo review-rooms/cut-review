@@ -1,0 +1,57 @@
+{
+ "title": "Launch cuts",
+ "subtitle": "cut-review example room",
+ "scriptLabel": "Voice-over script",
+ "media": "renders",
+ "groups": [
+  {"id": "video", "label": "Videos"},
+  {"id": "social", "label": "Social"}
+ ],
+ "cuts": [
+  {
+   "key": "teaser",
+   "file": "teaser.mp4",
+   "poster": "teaser.poster.png",
+   "title": "Vertical teaser",
+   "short": "Teaser",
+   "group": "video",
+   "aspect": "9:16",
+   "tags": ["Reels · Shorts"],
+   "description": "Eight seconds: the question, the product, the date.",
+   "script": [
+    {"from": 0.0, "to": 3.0, "text": "What if your notes could [pause] answer back?"},
+    {"from": 3.0, "to": 6.0, "text": "Meet the notebook that listens."},
+    {"from": 6.0, "to": 8.0, "text": "Out on the first of March."}
+   ]
+  },
+  {
+   "key": "explainer",
+   "file": "explainer.mp4",
+   "poster": "explainer.poster.png",
+   "title": "Landscape explainer",
+   "short": "Explainer",
+   "group": "video",
+   "aspect": "16:9",
+   "tags": ["website", "YouTube"],
+   "description": "Twelve seconds for the landing page, with a silent version for autoplay.",
+   "videoLabel": "With sound",
+   "alts": [{"key": "silent", "label": "Silent", "file": "explainer.silent.mp4"}],
+   "script": [
+    {"from": 0.0, "to": 4.0, "text": "Write anything. A list, a draft, a half-finished idea."},
+    {"from": 4.0, "to": 8.0, "text": "Ask it a question, and it finds the answer in your own words."},
+    {"from": 8.0, "to": 12.0, "text": "[warm] Your notes, finally useful."}
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "key": "carousel",
+   "dir": "carousel",
+   "title": "Carousel",
+   "short": "Carousel",
+   "group": "social",
+   "aspect": "4:5",
+   "description": "Three stills and a short clip, in file-name order."
+  }
+ ]
+}
