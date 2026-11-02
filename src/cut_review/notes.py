@@ -5,6 +5,7 @@ Note text is the owner's data. The CLI prints it so a session can act on it; it 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,6 +33,38 @@ def region_of(note: dict) -> tuple[float, float, float, float] | None:
         return None
     w, h = min(w, 1 - x), min(h, 1 - y)
     return (x, y, w, h) if w > 0 and h > 0 else None
+
+
+def spoken(text: str) -> str:
+    """A script line's spoken text: delivery cues ("[whisper]") taken out, white space collapsed.
+
+    Notes on words keep character offsets (qStart, qEnd) into this string; the page computes it the same way.
+    """
+    return " ".join(re.sub(r"\[[^\]]*\]", " ", str(text or "")).split())
+
+
+def quote_span(note: dict, line_text: str) -> tuple[int, int] | None:
+    """Where a script note's words sit in the line's spoken text: its offsets while they still match the line,
+    else the first place its quote occurs, else None (the line no longer has those words)."""
+    sp, q = spoken(line_text), note.get("quote")
+    q = q if isinstance(q, str) else ""
+    a, b = note.get("qStart"), note.get("qEnd")
+    if isinstance(a, int) and isinstance(b, int) and 0 <= a < b <= len(sp) and (not q or sp[a:b] == q):
+        return a, b
+    at = sp.find(q) if q else -1
+    return (at, at + len(q)) if at >= 0 else None
+
+
+def marked_line(note: dict, line_text: str) -> str:
+    """The line as the room has it now, with the note's words in «guillemets» (or noted as gone)."""
+    sp = spoken(line_text)
+    span = quote_span(note, line_text)
+    if span:
+        a, b = span
+        return f"{sp[:a]}«{sp[a:b]}»{sp[b:]}"
+    if isinstance(note.get("quote"), str) and note["quote"].strip():
+        return f"{sp}  (the quoted words are no longer in this line)"
+    return sp
 
 
 def script_line(note: dict) -> int | None:
@@ -144,7 +177,7 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
             lines.append(f"- [{n.get('status')}] {where(n)} · {n['text']}  (id {n['id']}, written on v{n.get('version', 1)})")
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
-                lines.append(f"  line: {script[i].get('text', '')}")
+                lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")
             if n.get("reply"):
                 lines.append(f"  reply: {n['reply']}")
         lines.append("")
