@@ -564,3 +564,34 @@ def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
     assert 'id="takeRow" hidden' in html                      # nothing about recording shows until a note is on a line
     assert "take: S.line && S.take" in html and 'use("assets")' in html
     assert "Keeping only the sound…" in html
+
+
+@needs_ffmpeg
+def test_takes_names_stay_inside_the_out_dir(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("../evil"), take_note("x2", asset=B, cut="../../outside"))
+    raw_take(room_dir); raw_take(room_dir, B)
+    capsys.readouterr()
+    run(room_dir, "takes")
+    out_dir = room_dir / ".cut-review" / "takes"
+    wavs = sorted(p.name for p in out_dir.glob("*.wav"))
+    assert wavs == ["poll_line1____evil.wav"]                 # a cut the room doesn't have is skipped
+    assert not list(room_dir.parent.rglob("outside*")) and not (room_dir / ".cut-review" / "evil.wav").exists()
+
+
+@needs_ffmpeg
+def test_takes_keeps_going_past_a_bad_download(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("bad", asset=B), take_note("good"))
+    raw_take(room_dir)
+    (room_dir / ".cut-review" / "takes" / "raw" / f"{B}.mp4").write_bytes(b"not a video")
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 1
+    io = capsys.readouterr()
+    assert [r["note"] for r in json.loads((room_dir / ".cut-review" / "takes" / "takes.json").read_text())] == ["good"]
+    assert "couldn't convert" in io.err and B in io.err
+
+
+def test_takes_folders_keep_themselves_out_of_git(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"))
+    assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
+    for d in (room_dir / ".cut-review" / "takes" / "raw", tmp_path / "x"):
+        assert (d / ".gitignore").read_text() == "*\n"

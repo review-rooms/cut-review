@@ -5,6 +5,7 @@ reference for re-generating that one line; it never sends it anywhere.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,9 +19,9 @@ TRIM = "silenceremove=start_periods=1:start_threshold=-50dB"
 FILTER = f"{TRIM},areverse,{TRIM},areverse,loudnorm=I=-20"   # silence off both ends, loudness evened out
 
 
-def open_takes(notes: list[dict]) -> list[tuple[dict, dict]]:
-    """(note, take) for every open note with a well-formed take."""
-    return [(n, t) for n in notes if n.get("status") == "open" and (t := take_of(n))]
+def open_takes(notes: list[dict], cuts: set[str] | None = None) -> list[tuple[dict, dict]]:
+    """(note, take) for every open note with a well-formed take (on one of `cuts`, when given)."""
+    return [(n, t) for n in notes if n.get("status") == "open" and (cuts is None or n.get("cut") in cuts) and (t := take_of(n))]
 
 
 def take_row(room: Room, note: dict) -> dict:
@@ -51,18 +52,29 @@ def read_call(room: Room, take: dict) -> dict:
     url = room.state.get("artifact")
     if not url:
         raise RoomError("no room linked (run `cut-review link URL`)")
-    return {"action": "read", "url": url, "path": take["asset"], "out_dir": str(room.state_dir / RAW)}
+    return {"action": "read", "url": url, "path": take["asset"], "out_dir": str(private_dir(room.state_dir / RAW))}
 
 
 def convert(src: Path, dst: Path) -> float:
     """A downloaded take as a 24 kHz mono 16-bit WAV with silence trimmed and loudness evened out; its seconds."""
     if not shutil.which("ffmpeg"):
         raise RoomError("ffmpeg is not on PATH")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vn", "-af", FILTER,
+    dst = dst.resolve()   # absolute, so a name can never read as an ffmpeg option
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src.resolve()), "-vn", "-af", FILTER,
                     "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", str(dst)], check=True, timeout=120)
     return round(probe_length(dst) or 0.0, 1)
 
 
 def wav_name(row: dict) -> str:
-    return f"{row['cut']}_line{row['line'] + 1}_{row['note']}.wav"
+    """<cut>_line<n>_<note id>.wav, with anything but letters, digits, _ and - replaced, so note data can't steer it."""
+    safe = lambda v: re.sub(r"[^A-Za-z0-9_-]", "_", str(v))  # noqa: E731
+    return f"{safe(row['cut'])}_line{row['line'] + 1}_{safe(row['note'])}.wav"
+
+
+def private_dir(d: Path) -> Path:
+    """Create a folder for takes that keeps itself out of git: they are the owner's voice."""
+    d.mkdir(parents=True, exist_ok=True)
+    ignore = d / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("*\n")
+    return d
