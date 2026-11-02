@@ -59,6 +59,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `written FILE` | Reads the batch result and records each document's database version. |
 | `notes DIR [--result FILE]` | Reads notes exported with `ArtifactData` `query`/`list` + `out_dir` (the files hold only note bodies; `--result` is the saved tool result text, which names each document's database version), saves them normalized to `.cut-review/notes.json`, prints a to-do list grouped by cut with timecodes. |
 | `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it: a range note gives its first and last frame (`_start`, `_end`), a region is boxed in red (a whole-cut note with a region uses the first frame). |
+| `takes` | For every open note with a voice take (in the saved notes), prints the `Artifact` `read` calls that download it (`url` the room, `path` the asset id, `out_dir` `.cut-review/takes/raw`), as JSON to run one by one; takes already downloaded are not listed again. |
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
 

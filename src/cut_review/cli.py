@@ -18,6 +18,7 @@ from .notes import extract_frames, fix_writes, load_export, save_notes, saved_no
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, sha256
+from .takes import open_takes, raw_file, read_call
 
 UPLOAD_BATCH = 25          # Artifact asset upload: at most 25 files per call
 UPLOAD_MAX_BYTES = 15 << 20  # and at most 15 MB per binary file
@@ -232,6 +233,19 @@ def cmd_frames(a) -> int:
     return 0
 
 
+def cmd_takes(a) -> int:
+    room = Room.load(a.room)
+    takes = open_takes(saved_notes(room))
+    if not takes:
+        print("No open notes with a take.")
+        return 0
+    reads = [read_call(room, t) for n, t in takes if not raw_file(room, t)]
+    if reads:
+        print("Download these with the Artifact tool, one call each, then run `cut-review takes` again:")
+        print(json.dumps(reads, indent=1))
+    return 0
+
+
 def cmd_fix(a) -> int:
     room = Room.load(a.room)
     replies: dict[str, str] = {}
@@ -322,6 +336,9 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (ffmpeg)")
     s.add_argument("--width", type=int, default=540)
     s.set_defaults(fn=cmd_frames)
+
+    s = sub.add_parser("takes", help="download open notes' voice takes and convert them to WAV (ffmpeg)")
+    s.set_defaults(fn=cmd_takes)
 
     s = sub.add_parser("fix", help="print the writes that answer notes")
     s.add_argument("pairs", nargs="*", metavar="ID=REPLY")

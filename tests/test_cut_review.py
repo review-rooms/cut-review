@@ -10,6 +10,7 @@ from cut_review.notes import extract_frames, fix_writes, load_export, marked_lin
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
+from cut_review.takes import take_row
 
 NO_PROBE = lambda p: None  # noqa: E731
 
@@ -439,3 +440,54 @@ def test_page_asks_to_publish_with_downloads(room_dir, capsys):
     assert run(room_dir, "page", "-o", str(out)) == 0
     assert '"downloads": true' in capsys.readouterr().err
     assert 'use("downloads")' in out.read_text()
+
+
+# ---------------------------------------------------------------- voice takes
+B = "0f" * 16
+URL = "https://claude.ai/artifact/room1"
+
+
+def take_note(nid, status="open", asset=A, line=0, **more):
+    data = {"cut": "poll", "t": 0, "tEnd": 3, "line": line, "text": f"note {nid}", "status": status,
+            "take": {"asset": asset, "seconds": 4.2, "type": "video/mp4"} if asset else None, **more}
+    return {"id": nid, "version": 1, "data": data}
+
+
+def save_takes(room_dir, tmp_path, *docs, link=True):
+    if link:
+        assert run(room_dir, "link", URL) == 0
+    save_notes(Room.load(room_dir), load_export(export(tmp_path, {d["id"]: d for d in docs})))
+
+
+def test_takes_prints_a_read_call_per_open_take(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), take_note("r", status="resolved", asset=B), take_note("n", asset=None))
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    out = capsys.readouterr().out
+    calls = json.loads(out[out.index("["):])
+    assert calls == [{"action": "read", "url": URL, "path": A, "out_dir": str(room_dir / ".cut-review" / "takes" / "raw")}]
+    assert "then run `cut-review takes` again" in out
+
+
+def test_takes_with_none_open_says_so(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("r", status="fixed"))
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    assert capsys.readouterr().out.strip() == "No open notes with a take."
+
+
+def test_takes_refuses_without_a_linked_room(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), link=False)
+    assert run(room_dir, "takes") == 1
+    assert "cut-review link" in capsys.readouterr().err
+
+
+def test_take_row_words_for_spans_gone_words_and_gone_lines(room_dir):
+    room = Room.load(room_dir)
+    base = {"id": "x", "cut": "poll", "text": "Like this", "line": 0}
+    row = take_row(room, {**base, "quote": "Hook", "qStart": 0, "qEnd": 4})
+    assert row == {"note": "x", "cut": "poll", "line": 0, "from": 0, "to": 3, "text": "Hook", "words": "Hook", "noteText": "Like this"}
+    assert take_row(room, {**base, "quote": "Gone"})["words"] == "Gone"
+    assert take_row(room, {**base, "quote": None})["words"] == "Hook"
+    gone = take_row(room, {**base, "line": 5, "quote": "Hook"})
+    assert (gone["text"], gone["from"], gone["to"], gone["words"]) == ("", None, None, "Hook")

@@ -84,7 +84,9 @@ Everything else about notes is unchanged, and pages built before this ignore the
     "wav": "poll_line4_….wav", "seconds": 4.2, "noteText": "…"}]
   ```
 
-  `text` and `words` use the same spoken text and `quote_span` the to-do list uses. A take whose file is
+  `text` and `words` use the same spoken text and `quote_span` the to-do list uses. When the note's words are no
+  longer in the line, `words` is the note's quote (what the owner recorded); for a note on a whole line it is the
+  line. A note whose line the script no longer has gets `text` `""` and `from`/`to` `null`. A take whose file is
   missing is listed with the `read` call still to run; nothing is invented.
 - `fix` is unchanged: re-recording the line and swapping the cut is still what fixes the note.
 
