@@ -555,3 +555,12 @@ def test_page_keeps_only_the_sound_without_reencoding(room_dir, capsys):
     assert "This recording's format can't be used; record again with the phone, or pick an m4a/mp3/wav." in html
     assert "Too long: keep a take under a few minutes." in html
     assert "innerHTML" not in html and html.startswith("<title>")
+
+
+def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
+    html = page_html(room_dir)
+    assert html.count("🎙 Record how it should sound") == 1 and html.count(">Pick a file<") == 1
+    assert 'id="takeCap" accept="audio/*" capture' in html and 'id="takePick" accept="audio/*,video/*"' in html
+    assert 'id="takeRow" hidden' in html                      # nothing about recording shows until a note is on a line
+    assert "take: S.line && S.take" in html and 'use("assets")' in html
+    assert "Keeping only the sound…" in html

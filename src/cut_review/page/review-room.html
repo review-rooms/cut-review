@@ -130,6 +130,10 @@ button { cursor: pointer; }
 .ghost { border: 1px solid var(--line); background: none; border-radius: 7px; padding: 4px 9px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .ghost[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
+.take { display: flex; flex-direction: column; gap: 6px; }
+.take audio, .note audio { width: 100%; height: 36px; }
+.tbtn { cursor: pointer; display: inline-flex; align-items: center; min-height: 32px; }
+.vh { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .notes { display: flex; flex-direction: column; gap: 8px; }
 .note { border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
 .note.fixed { border-left-color: var(--good); }
@@ -271,6 +275,20 @@ button { cursor: pointer; }
           <p class="linetarget" id="lineTarget" hidden><span>On <b id="lineTargetN"></b></span><span class="q" id="lineTargetQ"></span>
             <button class="ghost" id="b-unline" title="Not about the script any more" aria-label="Detach from the script line">✕</button></p>
           <textarea id="noteText" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
+          <div class="take" id="takeRow" hidden>
+            <div class="crow" id="takeAsk">
+              <label class="ghost tbtn" for="takeCap" id="takeCapL">🎙 Record how it should sound</label>
+              <label class="ghost tbtn" for="takePick" id="takePickL">Pick a file</label>
+            </div>
+            <input type="file" class="vh" id="takeCap" accept="audio/*" capture tabindex="-1">
+            <input type="file" class="vh" id="takePick" accept="audio/*,video/*" tabindex="-1">
+            <div class="take" id="takeHave" hidden>
+              <audio id="takeAudio" controls preload="metadata"></audio>
+              <div class="crow"><span class="hint mono" id="takeLen"></span>
+                <label class="ghost tbtn" for="takeCap" id="takeRedo">Redo</label>
+                <button class="ghost" id="b-untake">Remove</button></div>
+            </div>
+          </div>
           <div class="times" id="timeRow">
             <span class="tfield"><label for="tFrom">From</label><input id="tFrom" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="0:00.0">
               <button class="ghost" id="b-restamp" title="Start at the frame the video is on now (i)">Now</button></span>
@@ -318,7 +336,8 @@ button { cursor: pointer; }
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
               sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
-              line: null, follow: true, nowRow: -1, scriptTouched: 0 };
+              line: null, follow: true, nowRow: -1, scriptTouched: 0,
+              assets: null, take: null, takeGen: 0, takeBusy: false };
   const vid = $("vid");
 
   const fmt = (t) => {
@@ -521,7 +540,7 @@ button { cursor: pointer; }
       const i = +tr.dataset.i, spoken = spokenOf(scriptOf(e)[i]?.text ?? "");
       const here = mine.filter((n) => +n.line === i);
       tr.classList.toggle("noted", here.length > 0);
-      const c = tr.querySelector(".ncount"); if (c) c.textContent = here.length ? String(here.length) : "";
+      const c = tr.querySelector(".ncount"); if (c) c.textContent = here.length ? String(here.length) + (here.some(takeOf) ? " 🎙" : "") : "";
       const spans = here.map((n) => ({ n, sp: spanOf(n, spoken) })).filter((x) => x.sp);
       const pick = S.line && S.line.i === i && S.line.qs != null ? [S.line.qs, S.line.qe] : null;
       for (const w of tr.querySelectorAll(".w")) {
@@ -559,6 +578,7 @@ button { cursor: pointer; }
   function renderLineTarget() {
     const l = S.line;
     $("lineTarget").hidden = !l;
+    renderTake();
     if (!l) return;
     $("lineTargetN").textContent = "script line " + (l.i + 1);
     const plain = spokenOf(scriptOf(entryOf(S.sel))[l.i]?.text ?? "");
@@ -860,7 +880,8 @@ button { cursor: pointer; }
     $("b-unrange").hidden = !ranged;
     $("b-unregion").hidden = isSet || !S.region;
     $("b-region").setAttribute("aria-pressed", String(S.drawing));
-    $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim();
+    $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim() || S.takeBusy;
+    renderTake();
   }
   $("noteText").addEventListener("focus", () => {
     if (entryOf(S.sel)?.kind !== "cut") return;
@@ -912,9 +933,20 @@ button { cursor: pointer; }
   $("general").onchange = () => { if ($("general").checked) S.stampEnd = null; updateStamp(); renderMarks(); };
   $("b-add").onclick = addNote;
   async function addNote() {
+    if (!$("noteText").value.trim() || !S.db || !entryOf(S.sel) || S.takeBusy) return;
+    let asset = null;
+    if (S.line && S.take) {   // the take was uploading since it was recorded; the note waits for it
+      const take = S.take;
+      $("b-add").disabled = true; $("composerHint").textContent = "Keeping only the sound…";
+      try { asset = await take.upload; }
+      catch (err) {   // keep the text and the take; the next Add tries the upload again
+        take.upload = S.assets.upload(take.blob, { type: take.type }); take.upload.catch(() => {});
+        onWriteError(err); updateStamp(); return;
+      }
+    }
     const text = $("noteText").value.trim();
     const e = entryOf(S.sel);
-    if (!text || !S.db || !e) return;
+    if (!text || !e) { updateStamp(); return; }
     const isSet = e.kind === "set";
     const row = {
       cut: e.key, text, status: "open", reply: "", by: S.me || null,
@@ -924,18 +956,66 @@ button { cursor: pointer; }
       item: isSet ? ($("itemSel").value || null) : null,
       line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
       qStart: isSet || !S.line || S.line.qs == null ? null : S.line.qs, qEnd: isSet || !S.line || S.line.qe == null ? null : S.line.qe,
+      take: S.line && S.take && asset ? { asset: asset.id, seconds: Math.round(S.take.seconds * 10) / 10, type: S.take.type } : null,
       version: e.version || 1, createdAt: new Date().toISOString(),
     };
     $("b-add").disabled = true;
     try {
       await S.db.collection("notes").add(row);
       $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
-      S.line = null; renderLineTarget(); renderScriptMarks();
+      dropTake(true); S.line = null; renderLineTarget(); renderScriptMarks();
       S.stampT = vid.currentTime || 0;
       updateStamp(); renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";
     } catch (err) { onWriteError(err); updateStamp(); }
   }
+
+  // ---------- the take: how a script line should sound, recorded with the phone; only on a note on a line
+  const takeOf = (n) => {
+    const t = n && n.take;
+    return n.line != null && t && typeof t === "object" && /^[0-9a-f]{32}$/.test(t.asset) && typeof t.seconds === "number"
+      && t.seconds >= 0 && (t.type === "video/mp4" || t.type === "video/webm") ? t : null;
+  };
+  function renderTake() {
+    if (!S.line && S.take) dropTake(false);   // a take belongs to a line: detached or another cut, it goes
+    $("takeRow").hidden = !(S.line && S.assets && S.canWrite);
+    $("takeAsk").hidden = !!S.take || S.takeBusy;
+    $("takeHave").hidden = !S.take;
+    if (S.take) $("takeLen").textContent = S.take.seconds.toFixed(1) + " s";
+  }
+  function dropTake(saved) {   // saved: the note now holds the asset; otherwise the upload is deleted
+    const t = S.take; if (!t) return;
+    S.take = null; S.takeGen++;
+    $("takeAudio").removeAttribute("src"); $("takeAudio").load();
+    URL.revokeObjectURL(t.url);
+    if (!saved) t.upload.then((a) => S.assets && S.assets.delete(a.id)).catch(() => {});
+    renderTake();
+  }
+  async function takeFrom(file) {
+    dropTake(false);
+    const gen = ++S.takeGen;
+    S.takeBusy = true; $("composerHint").textContent = "Keeping only the sound…"; updateStamp();
+    try {
+      const out = await audioOnly(file);
+      if (gen !== S.takeGen) return;   // replaced by a newer recording
+      if (!S.line || !S.assets) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; return; }   // the note left its line meanwhile
+      const upload = S.assets.upload(out.blob, { type: out.blob.type });
+      upload.catch(() => {});
+      S.take = { blob: out.blob, seconds: out.seconds, type: out.blob.type, upload, url: URL.createObjectURL(out.blob) };
+      $("takeAudio").src = S.take.url;
+      $("composerHint").textContent = "Got it. Play it back, then add the note.";
+    } catch (err) {
+      if (gen === S.takeGen) $("composerHint").textContent = TAKE_REFUSED[err?.name] || "Couldn't read that recording (" + (err?.name || "error") + ").";
+    } finally {
+      if (gen === S.takeGen) S.takeBusy = false;
+      updateStamp();
+    }
+  }
+  for (const id of ["takeCapL", "takePickL", "takeRedo"]) $(id).addEventListener("click", wakeAudio);
+  for (const id of ["takeCap", "takePick"]) {
+    $(id).onchange = (ev) => { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) takeFrom(f); };
+  }
+  $("b-untake").onclick = () => { dropTake(false); $("composerHint").textContent = "Take removed."; };
 
   // ---------- regions: boxes on the frame, as fractions of the picture (not of the letterboxed element)
   const reg = (r) => {
@@ -1083,12 +1163,20 @@ button { cursor: pointer; }
       card.append(top);
       if (n.quote) card.append(el("div", "quote", "“" + n.quote + "”"));
       card.append(el("div", "body", n.text));
+      const take = !isSet && takeOf(n);
+      if (take) {
+        const a = el("audio"); a.controls = true; a.preload = "none"; a.src = "/_blob/" + take.asset;
+        const b = el("button", "t", "🎙 " + take.seconds.toFixed(1) + " s"); b.title = "Play how it should sound";
+        b.onclick = () => { if (a.paused) a.play().catch(() => {}); else a.pause(); };
+        top.insertBefore(b, top.querySelector(".pill")); card.append(a);
+      }
       if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude" + (n.fixedIn ? " · v" + n.fixedIn : "")), document.createTextNode(n.reply)); card.append(r); }
       const acts = el("div", "acts");
       if (S.canWrite && S.db) {
         if (n.status === "fixed") acts.append(act("Looks right", () => setStatus(n, "resolved")), act("Still wrong", () => setStatus(n, "open")));
         if (n.status === "resolved" || n.status === "wontfix") acts.append(act("Reopen", () => setStatus(n, "open")));
-        if (n.status === "open" && n.by && n.by === S.me) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete().catch(onWriteError)));
+        if (n.status === "open" && n.by && n.by === S.me) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete()
+          .then(() => { const t = takeOf(n); if (t && S.assets) S.assets.delete(t.asset).catch(() => {}); }).catch(onWriteError)));
       }
       if (acts.childNodes.length) card.append(acts);
       box.append(card);
@@ -1162,6 +1250,7 @@ button { cursor: pointer; }
     const db = await use("db");
     const user = await use("user");
     S.db = db;
+    S.assets = await use("assets");
     if (!db) { $("title").textContent = "Sign in to review"; banner("This review room keeps its cuts and notes in claude.ai. Open it while signed in.", true); updateStamp(); return; }
     S.me = user ? await user.id() : null;
     const cw = user ? await user.can("data.write") : null;
