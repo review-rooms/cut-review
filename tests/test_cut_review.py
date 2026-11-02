@@ -540,3 +540,18 @@ def test_takes_out_dir_and_mixed_downloaded_and_missing(room_dir, tmp_path, caps
     assert [r["note"] for r in json.loads((tmp_path / "x" / "takes.json").read_text())] == ["o"]
     assert (tmp_path / "x" / "poll_line1_o.wav").is_file()
     assert json.loads(out[out.index("["):])[0]["path"] == B
+
+
+def page_html(room_dir) -> str:
+    out = room_dir / "page.html"
+    assert run(room_dir, "page", "-o", str(out)) == 0
+    return out.read_text()
+
+
+def test_page_keeps_only_the_sound_without_reencoding(room_dir, capsys):
+    html = page_html(room_dir)
+    assert html.count("<script src=") == 1 and 'src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"' in html
+    assert '"M4A "' in html and "function writeM4a(" in html and "async function audioOnly(" in html
+    assert "This recording's format can't be used; record again with the phone, or pick an m4a/mp3/wav." in html
+    assert "Too long: keep a take under a few minutes." in html
+    assert "innerHTML" not in html and html.startswith("<title>")
