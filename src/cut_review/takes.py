@@ -5,12 +5,17 @@ reference for re-generating that one line; it never sends it anywhere.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 from .notes import quote_span, script_line, spoken, take_of
+from .records import probe_length
 from .room import Room, RoomError
 
 RAW = "takes/raw"   # under .cut-review/: where the Artifact reads save the downloaded takes
+TRIM = "silenceremove=start_periods=1:start_threshold=-50dB"
+FILTER = f"{TRIM},areverse,{TRIM},areverse,loudnorm=I=-20"   # silence off both ends, loudness evened out
 
 
 def open_takes(notes: list[dict]) -> list[tuple[dict, dict]]:
@@ -47,3 +52,17 @@ def read_call(room: Room, take: dict) -> dict:
     if not url:
         raise RoomError("no room linked (run `cut-review link URL`)")
     return {"action": "read", "url": url, "path": take["asset"], "out_dir": str(room.state_dir / RAW)}
+
+
+def convert(src: Path, dst: Path) -> float:
+    """A downloaded take as a 24 kHz mono 16-bit WAV with silence trimmed and loudness evened out; its seconds."""
+    if not shutil.which("ffmpeg"):
+        raise RoomError("ffmpeg is not on PATH")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vn", "-af", FILTER,
+                    "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", str(dst)], check=True, timeout=120)
+    return round(probe_length(dst) or 0.0, 1)
+
+
+def wav_name(row: dict) -> str:
+    return f"{row['cut']}_line{row['line'] + 1}_{row['note']}.wav"

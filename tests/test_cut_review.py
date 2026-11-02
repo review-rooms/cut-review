@@ -491,3 +491,52 @@ def test_take_row_words_for_spans_gone_words_and_gone_lines(room_dir):
     assert take_row(room, {**base, "quote": None})["words"] == "Hook"
     gone = take_row(room, {**base, "line": 5, "quote": "Hook"})
     assert (gone["text"], gone["from"], gone["to"], gone["words"]) == ("", None, None, "Hook")
+
+
+def raw_take(room_dir, asset=A):
+    d = room_dir / ".cut-review" / "takes" / "raw"
+    d.mkdir(parents=True, exist_ok=True)
+    dst = d / f"{asset}.mp4"   # a quiet 3 s tone after 1 s of silence, 48 kHz stereo AAC, like a phone take
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3:sample_rate=48000",
+                    "-af", "volume=0.05,adelay=1000|1000", "-ac", "2", "-c:a", "aac", str(dst)], check=True)
+    return dst
+
+
+def probe(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name,sample_rate,channels:format=duration",
+                          "-of", "json", str(path)], capture_output=True, text=True, check=True).stdout
+    j = json.loads(out)
+    return j["streams"][0], float(j["format"]["duration"])
+
+
+needs_ffmpeg = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg is not installed")
+
+
+@needs_ffmpeg
+def test_takes_converts_downloads_to_24k_mono_wav_and_lists_them(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o", quote="Hook", qStart=0, qEnd=4))
+    raw_take(room_dir)
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    out = capsys.readouterr().out
+    wav = room_dir / ".cut-review" / "takes" / "poll_line1_o.wav"
+    stream, secs = probe(wav)
+    assert (stream["codec_name"], stream["sample_rate"], stream["channels"]) == ("pcm_s16le", "24000", 1)
+    assert 2.5 < secs < 3.6                       # the leading second of silence is gone
+    rows = json.loads((wav.parent / "takes.json").read_text())
+    assert rows == [{"note": "o", "cut": "poll", "line": 0, "from": 0, "to": 3, "text": "Hook", "words": "Hook",
+                     "wav": "poll_line1_o.wav", "seconds": rows[0]["seconds"], "noteText": "note o"}]
+    assert abs(rows[0]["seconds"] - secs) < 0.11
+    assert f"{wav}  ← poll line 1: Hook" in out and '"action": "read"' not in out
+
+
+@needs_ffmpeg
+def test_takes_out_dir_and_mixed_downloaded_and_missing(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), take_note("m", asset=B))
+    raw_take(room_dir)
+    capsys.readouterr()
+    assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
+    out = capsys.readouterr().out
+    assert [r["note"] for r in json.loads((tmp_path / "x" / "takes.json").read_text())] == ["o"]
+    assert (tmp_path / "x" / "poll_line1_o.wav").is_file()
+    assert json.loads(out[out.index("["):])[0]["path"] == B

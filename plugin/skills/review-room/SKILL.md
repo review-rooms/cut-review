@@ -64,7 +64,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
    frame), script lines (`[script line 3, on “the quoted words”]`, then the line as the room has it now with the
    exact words in «guillemets», so a word that occurs twice is unambiguous) and
    note ids, and keeps each note's database version for `fix`. A script note is about the words, so fix the script
-   (and re-record the voice) rather than the picture.
+   (and re-record the voice) rather than the picture. A `take:` row under a script note means the owner recorded
+   how the line should sound: see "Notes with a voice take".
 2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame
    of a range; a note's region is boxed in red). Read the images before changing anything, so you fix what the
    owner pointed at: the whole range, and inside the box.
@@ -76,6 +77,24 @@ the room project next to the work that renders the videos; never commit `.cut-re
 6. `cut-review fix <id>="<one line: what changed>" …` (or `--from replies.json`) → `ArtifactData` `batch` →
    `cut-review written <file>`. Each note turns "Fixed, check it" with your reply and the version it is fixed in.
 7. Tell the user what you changed per cut and which notes you left open or marked won't fix, with the link.
+
+## Notes with a voice take
+
+On a script note the owner can record themselves saying the line (or the words they selected) the way it should
+sound. The to-do list shows it as `take: 4.2 s (asset 39bb…)`.
+
+1. After `cut-review notes …`, run `cut-review takes`. It prints one `Artifact` `read` call per open take (`url`,
+   `path` = the asset id, `out_dir`); run them one by one.
+2. Run `cut-review takes` again. It converts each download to `.cut-review/takes/<cut>_line<n>_<note id>.wav`
+   (24 kHz mono, loudness evened out, silence trimmed; `--out DIR` to put them elsewhere) and writes `takes.json`:
+   per take the note, cut, line, its times, the spoken `text`, the `words` the take is of, the `wav` and its
+   `seconds`.
+3. Give each WAV and its `words` to the project's voice step as the reference for how that line should sound:
+   intonation, pace, emphasis. The persona's voice stays the persona's; the take only shows the delivery. Then
+   re-render, swap the cut and answer the note as usual.
+
+Rules: a take is the owner's own voice. Use it only as a reference for that line. Never publish, share or train on
+it, and never copy takes into a repo.
 
 ## When something is off
 
