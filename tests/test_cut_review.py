@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from cut_review import cli
-from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, todo, where
+from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, take_of, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
@@ -272,6 +272,32 @@ def test_todo_shows_script_lines_and_quotes(room_dir, tmp_path):
     assert '0:00.0–0:03.0 [script line 1] · Cut this line' in out
     assert '  line: Hook' in out                       # the line as the room has it now, so a session sees what it said
     assert '[script line 8] · Line gone' in out          # a line the script no longer has still shows its number
+
+
+A = "39bb1bc8def01eca67a6f983358b3c0d"
+
+
+def test_take_of_accepts_only_well_formed_takes_on_script_lines():
+    ok = {"line": 0, "take": {"asset": A, "seconds": 4.2, "type": "video/mp4"}}
+    assert take_of(ok) == {"asset": A, "seconds": 4.2, "type": "video/mp4"}
+    for bad in ({"asset": "xyz", "seconds": 1, "type": "video/mp4"}, {"asset": A, "seconds": "4", "type": "video/mp4"},
+                {"asset": A, "seconds": True, "type": "video/mp4"}, {"asset": A, "seconds": -1, "type": "video/mp4"},
+                {"asset": A, "seconds": 1, "type": "audio/mp4"}, {"seconds": 1, "type": "video/mp4"}, "take", None):
+        assert take_of({"line": 0, "take": bad}) is None
+    assert take_of({"line": None, "take": ok["take"]}) is None
+
+
+def test_todo_shows_a_take_under_its_line(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "t": {"id": "t", "version": 1, "data": {"cut": "poll", "t": 0, "line": 0, "text": "Like this", "status": "open",
+                                                  "take": {"asset": A, "seconds": 4.2, "type": "video/mp4"}}},
+        "b": {"id": "b", "version": 1, "data": {"cut": "poll", "t": 1, "line": 0, "text": "Broken", "status": "open",
+                                                  "take": {"asset": "nope"}}},
+    }))
+    out = todo(room, notes)
+    assert "Like this  (id t, written on v1)\n  line: Hook\n  take: 4.2 s (asset 39bb…)" in out
+    assert out.count("take:") == 1
 
 
 def test_page_script_scroll_respects_reduced_motion(room_dir, capsys):
