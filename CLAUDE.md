@@ -12,6 +12,9 @@ record, command or rule changes, in the same commit.
 - **The CLI** (`src/cut_review/`) prepares inputs for Claude's `Artifact` and `ArtifactData` calls and parses
   their results. Standard library only. `room.py` (manifest + state), `parse.py` (tool-result parsers),
   `records.py` (records, versions, batch writes), `notes.py` (export, to-do, frames, fixes), `cli.py` (commands).
+- **The local recorder** (`recorder/`, experimental): a stdlib server + page, run in Docker on the owner's machine,
+  that records voice takes the room can't (claude.ai blocks the mic). Same rules as the CLI: stdlib only, tested in
+  `tests/test_recorder.py`.
 - **The plugin** (`plugin/`, listed by `.claude-plugin/marketplace.json`): the `review-room` skill. When a command
   or flow changes, update the skill in the same commit; it is how other sessions learn the loop.
 

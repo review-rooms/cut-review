@@ -96,6 +96,16 @@ sound. The to-do list shows it as `take: 4.2 s (asset 39bb…)`.
 Rules: a take is the owner's own voice. Use it only as a reference for that line. Never publish, share or train on
 it, and never copy takes into a repo.
 
+### Recording takes locally (experimental)
+
+The room can't record (claude.ai blocks the microphone), so when the owner wants to record how lines should sound,
+run the local recorder from the room project after `cut-review notes …`. The commands are in `recorder/README.md` of
+the cut-review repo: build the image, `mkdir -p .cut-review/takes/local`, run the container with the project
+mounted read-only and that folder writable, port on `127.0.0.1` only. Give the owner the link
+`http://localhost:8790`; it lists the open script notes and records one take per note into
+`.cut-review/takes/local/`. When they're done, stop the container and run `cut-review takes`: local takes convert
+like room takes, with no downloads.
+
 ## When something is off
 
 - A pinned write fails because a document changed (the owner edited a note meanwhile): export the notes again and

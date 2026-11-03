@@ -73,6 +73,15 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
 
+### 2b. The local recorder (`recorder/`, experimental)
+
+claude.ai pages can't use the microphone, so `recorder/server.py` (standard library, run in Docker or directly)
+serves a page on the owner's machine that can. It lists the open notes on script lines from the saved notes and
+keeps one take per note in `.cut-review/takes/local/<note id>.<ext>` (`.webm`, `.m4a` or `.ogg`), which `takes`
+converts like the room's takes (a local take wins over the room's). It answers only to localhost, takes audio up to
+20 MiB, and only for open script notes; the Docker run mounts the project read-only except that folder. Commands
+and API: `recorder/README.md`.
+
 ### 3. The Claude Code plugin (`plugin/`, marketplace at `.claude-plugin/marketplace.json`)
 
 Skill `review-room`: when to use it, the create-a-room flow, the apply-notes loop, the exact tool calls, and the
