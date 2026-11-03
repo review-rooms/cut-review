@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>cut-review: review rooms for rendered videos</title>
+<meta name="description" content="Pin notes to exact frames of your renders. Claude reads them, re-renders, and answers every note.">
+<style>
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --sunk: #e3e8ed; --ink: #111820; --muted: #56616d; --line: #d4dbe2;
+  --accent: #14853f; --accent-soft: #d9f1e1; --accent-ink: #ffffff; --mark: #fff1b8;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0b0e13; --panel: #131820; --sunk: #1a212b; --ink: #e8edf2; --muted: #8e99a5;
+    --line: #252e3a; --accent: #3fdc6a; --accent-soft: #143222; --accent-ink: #07150c; --mark: #4a3d0a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0b0e13; --panel: #131820; --sunk: #1a212b; --ink: #e8edf2; --muted: #8e99a5;
+  --line: #252e3a; --accent: #3fdc6a; --accent-soft: #143222; --accent-ink: #07150c; --mark: #4a3d0a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 var(--font); }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+nav { display: flex; justify-content: space-between; align-items: center; padding-block: 18px; }
+.logo { font: 700 17px var(--mono); color: var(--ink); text-decoration: none; letter-spacing: -0.02em; }
+.logo span { color: var(--accent); }
+nav .links { display: flex; gap: 18px; font-size: 15px; }
+nav .links a { color: var(--muted); text-decoration: none; }
+nav .links a:hover { color: var(--ink); }
+header { padding-block: 40px 28px; max-width: 760px; }
+h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 18px; }
+h1 em { font-style: normal; background: var(--mark); border-radius: 6px; padding: 0 6px; }
+.lede { font-size: clamp(18px, 2.4vw, 21px); color: var(--muted); margin: 0 0 26px; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 18px; border-radius: 10px;
+  font: 600 16px var(--font); text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.preview { margin-block: 20px 8px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel);
+  box-shadow: 0 20px 50px -24px rgba(0,0,0,.35); }
+.preview .bar { display: flex; align-items: center; gap: 6px; padding: 9px 12px; border-bottom: 1px solid var(--line);
+  font: 12px var(--mono); color: var(--muted); }
+.preview .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.preview .bar span { margin-left: 8px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview iframe { display: block; width: 100%; height: 640px; border: 0; background: var(--bg); }
+.caption { font-size: 14px; color: var(--muted); margin: 0 0 8px; }
+section { padding-block: 44px; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(24px, 3.4vw, 32px); letter-spacing: -0.02em; margin: 0 0 8px; }
+.sub { color: var(--muted); margin: 0 0 26px; max-width: 680px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: s; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.steps .card::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 14px var(--mono); margin-bottom: 10px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p { margin: 0; color: var(--muted); font-size: 16px; }
+.card q { color: var(--ink); quotes: "“" "”"; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.features .card h3 { font-size: 16px; }
+pre { margin: 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  font: 14px/1.6 var(--mono); overflow-x: auto; }
+pre .c { color: var(--muted); }
+.install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.install p { margin: 0 0 12px; color: var(--muted); font-size: 16px; }
+.loop { font: 14px/1.7 var(--mono); }
+footer { border-top: 1px solid var(--line); padding-block: 26px 40px; color: var(--muted); font-size: 14px;
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 820px) {
+  .steps, .features, .install { grid-template-columns: minmax(0, 1fr); }
+  .preview iframe { height: 560px; }
+}
+@media (max-width: 560px) {
+  nav .links a.hide-sm { display: none; }
+  .preview { display: none; }
+  header { padding-top: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="logo" href="./">cut<span>-</span>review</a>
+    <div class="links">
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <a href="https://github.com/review-rooms/cut-review">GitHub</a>
+    </div>
+  </nav>
+
+  <header>
+    <h1>Pin notes to <em>the exact frame.</em> Claude fixes the video.</h1>
+    <p class="lede">cut-review turns your renders into a private review room on claude.ai. Watch each cut on any device,
+      pause and type what's wrong. Say “apply my notes” and Claude changes whatever made the video, re-renders it, and
+      answers every note.</p>
+    <div class="cta">
+      <a class="btn primary" href="demo/">Open the demo room →</a>
+      <a class="btn" href="#install">Install the plugin</a>
+    </div>
+  </header>
+
+  <div class="preview" aria-label="Live demo room">
+    <div class="bar"><i></i><i></i><i></i><span>Launch cuts · demo review room</span><a href="demo/">Full screen ↗</a></div>
+    <iframe src="demo/" title="cut-review demo room" loading="lazy"></iframe>
+  </div>
+  <p class="caption">A real room, running here without claude.ai. Placeholder media; notes you add stay in your browser tab.</p>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <p class="sub">One loop, from first render to sign-off. You stay in the room; Claude does the rest from a Claude Code session.</p>
+    <div class="steps">
+      <div class="card"><h3>Make a room</h3><p><q>Make a review room for the videos in renders/.</q> Claude publishes a private
+        page, uploads your cuts, and sends you the link.</p></div>
+      <div class="card"><h3>Leave notes</h3><p>Pause on a frame and type. Mark a time range, box part of the picture, or
+        select words in the voice-over script. Give each cut a verdict.</p></div>
+      <div class="card"><h3>Apply them</h3><p><q>Apply my notes.</q> Claude reads every note with the frame behind it,
+        edits the source, re-renders, swaps in v2 and replies to each note. You press Looks right or Still wrong.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Made for reviewing renders</h2>
+    <p class="sub">Everything a note needs to be unambiguous, so the fix is right the first time.</p>
+    <div class="features">
+      <div class="card"><h3>Frame-exact notes</h3><p>Every note carries its timecode, a range or a region of the frame.</p></div>
+      <div class="card"><h3>Script notes</h3><p>Select a word or a whole line of the voice-over and say how it should change.</p></div>
+      <div class="card"><h3>Sets and carousels</h3><p>Comment on stills and clips of a carousel, item by item.</p></div>
+      <div class="card"><h3>Versions</h3><p>A cut goes up a version only when its video changes, with a note on what changed.</p></div>
+      <div class="card"><h3>Any device</h3><p>Review on your phone, laptop or the Claude app. The room is a private claude.ai page.</p></div>
+      <div class="card"><h3>Open source</h3><p>A Claude Code plugin and a small Python CLI, standard library only. MIT licensed.</p></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p class="sub">You need <a href="https://claude.com/claude-code">Claude Code</a> and
+      <a href="https://docs.astral.sh/uv/">uv</a>. Then, in a terminal:</p>
+    <div class="install">
+      <div>
+        <pre><code>claude plugin marketplace add review-rooms/cut-review
+claude plugin install cut-review@cut-review</code></pre>
+      </div>
+      <div>
+        <p>Start a new Claude Code session and ask:</p>
+        <pre><code><span class="c"># in your project</span>
+Make a review room for the videos in renders/
+<span class="c"># later, after you've left notes</span>
+Apply my notes</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>cut-review · MIT licensed</span>
+    <span><a href="https://github.com/review-rooms/cut-review">Source</a> ·
+      <a href="https://github.com/review-rooms/cut-review/tree/main/examples/launch-cuts">Example room</a> ·
+      <a href="https://github.com/review-rooms/cut-review/blob/main/docs/spec.md">Spec</a></span>
+  </footer>
+</div>
+</body>
+</html>

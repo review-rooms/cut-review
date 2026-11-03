@@ -2,6 +2,8 @@
 
 Review rooms for rendered videos, run by Claude.
 
+**[See it: the project site and a demo room](https://review-rooms.github.io/cut-review/)** (runs in the browser, no claude.ai needed).
+
 You render videos (an edit, an animation, a set of social cuts). Claude puts them in a private claude.ai page, a
 **review room**, where you watch each cut on any device, pause on a frame and type a note (or mark a time range, or box a region
 of the frame), comment on still or clip
@@ -75,6 +77,7 @@ list and frames a session can look at.
 | `.claude-plugin/marketplace.json` | Makes this repo a plugin marketplace. |
 | `docs/spec.md` | The design: records, state, commands. |
 | `examples/` | Example rooms: `room.json` plus a script that makes placeholder media; renders and state stay local. Try `examples/launch-cuts`. |
+| `site/` | The project site and its demo room (`site/build.py`), published to GitHub Pages by `.github/workflows/pages.yml`. |
 | `tests/` | Unit tests (`uv run pytest`) and the page harness. |
 
 ## Develop
