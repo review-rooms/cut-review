@@ -18,18 +18,14 @@ pause, type a note  ───────▶   notes/<id>  {cut, t, text, status
 
 ## Install
 
-In Claude Code:
-
-```
-/plugin install cut-review --marketplace review-rooms/cut-review
-```
-
-or, step by step:
+In a terminal:
 
 ```bash
 claude plugin marketplace add review-rooms/cut-review
 claude plugin install cut-review@cut-review
 ```
+
+Then start a new Claude Code session so it picks up the plugin.
 
 The plugin adds the `review-room` skill, which teaches any session the whole loop. The skill runs the CLI with
 `uvx --from git+https://github.com/review-rooms/cut-review cut-review` (needs [uv](https://docs.astral.sh/uv/)),
