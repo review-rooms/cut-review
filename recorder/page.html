@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Voice Takes</title>
+<style>
+/* cut-review local recorder: one card per open note on a script line; record how the line should sound. */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --ink: #111820; --muted: #56616d; --line: #d4dbe2;
+  --accent: #14853f; --accent-ink: #ffffff; --bad: #c92f2f; --mark: #fff1b8;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0b0e13; --panel: #131820; --ink: #e8edf2; --muted: #8e99a5; --line: #252e3a;
+    --accent: #3fdc6a; --accent-ink: #07150c; --bad: #ff5c5c; --mark: #4a3d0a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0b0e13; --panel: #131820; --ink: #e8edf2; --muted: #8e99a5; --line: #252e3a;
+  --accent: #3fdc6a; --accent-ink: #07150c; --bad: #ff5c5c; --mark: #4a3d0a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.45; }
+.wrap { max-width: 720px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.banner { border: 1px solid var(--bad); color: var(--bad); border-radius: 10px; padding: 10px 12px; }
+#list { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.where { font: 600 12px var(--mono); color: var(--muted); letter-spacing: 0.02em; }
+.line { font-size: 19px; line-height: 1.4; }
+.line mark { background: var(--mark); color: inherit; border-radius: 4px; padding: 0 2px; }
+.note { color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { border: 1px solid var(--line); background: none; color: var(--ink); border-radius: 8px; padding: 8px 12px;
+  font: 600 14px var(--font); cursor: pointer; min-height: 40px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.stop { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: 0.5; cursor: default; }
+audio { width: 100%; height: 40px; }
+.status { font-size: 13px; color: var(--muted); }
+.status.bad { color: var(--bad); }
+.time { font: 600 13px var(--mono); color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Voice takes</h1>
+  <p class="muted">For each note below, record how the line should sound. Your browser asks for the microphone the
+    first time. Takes stay on this computer, in the room project, for Claude to use as a reference.</p>
+  <p class="banner" id="banner" hidden></p>
+  <div id="list"><p class="muted">Loading the notes…</p></div>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const fmt = (t) => t == null ? "" : Math.floor(t / 60) + ":" + (t % 60 < 10 ? "0" : "") + (t % 60).toFixed(1);
+  const REC_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  const MAX_SECONDS = 180;
+  const banner = (msg) => { $("banner").hidden = !msg; $("banner").textContent = msg || ""; };
+  let busy = null;   // the card recording now: only one at a time
+
+  async function load() {
+    let r;
+    try { r = await fetch("/api/notes", { cache: "no-store" }); } catch { banner("The recorder isn't running."); return; }
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { banner(body.error || "Couldn't read the notes."); $("list").replaceChildren(); return; }
+    $("list").replaceChildren(...(body.length ? body.map(card) : [el("p", "muted", "No open notes on script lines.")]));
+  }
+
+  function lineWithWords(text, words) {
+    const p = el("p", "line");
+    const at = words && words !== text ? text.indexOf(words) : -1;
+    if (at < 0) { p.textContent = text || "(this line is no longer in the script)"; return p; }
+    p.append(document.createTextNode(text.slice(0, at)), el("mark", null, words), document.createTextNode(text.slice(at + words.length)));
+    return p;
+  }
+
+  function card(n) {
+    const c = el("section", "card");
+    c.append(el("p", "where", n.cut + " · line " + (n.line + 1) + (n.from != null ? " · " + fmt(n.from) + "–" + fmt(n.to) : "")),
+      lineWithWords(n.text, n.words), el("p", "note", n.noteText));
+    const row = el("div", "row"), status = el("p", "status"), player = el("audio");
+    player.controls = true; player.preload = "none";
+    c.append(player, row, status);
+    let take = n.take;
+    const src = () => "/api/takes/" + encodeURIComponent(n.note) + "?v=" + Date.now();
+
+    function render(state) {
+      row.replaceChildren();
+      player.hidden = !take || state === "recording";
+      if (state === "recording") {
+        const stop = el("button", "stop", "■ Stop"), time = el("span", "time", "0 s");
+        stop.onclick = () => busy && busy.stop();
+        row.append(stop, time);
+        return time;
+      }
+      if (!take) {
+        const b = el("button", "primary", "🎙 Record how it should sound");
+        b.onclick = record; b.disabled = !!busy; row.append(b);
+      } else {
+        const redo = el("button", null, "Redo"), del = el("button", null, "Remove");
+        redo.onclick = record; redo.disabled = !!busy;
+        del.onclick = async () => {
+          const r = await fetch("/api/takes/" + encodeURIComponent(n.note), { method: "DELETE" });
+          if (r.ok) { take = null; player.removeAttribute("src"); status.textContent = "Take removed."; render(); }
+        };
+        row.append(redo, del);
+        status.textContent = status.textContent || (take.bytes ? "Take saved (" + Math.round(take.bytes / 1024) + " KB)." : "");
+      }
+    }
+
+    async function record() {
+      if (busy) return;
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (e) { status.className = "status bad"; status.textContent = "No microphone (" + (e && e.name || "error") + "). Allow it in the browser's site settings."; return; }
+      status.className = "status"; status.textContent = "Recording… say the line, then Stop.";
+      const mime = REC_TYPES.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const parts = [], started = Date.now();
+      rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
+      const time = render("recording");
+      const timer = setInterval(() => {
+        const s = (Date.now() - started) / 1000;
+        time.textContent = Math.floor(s) + " s";
+        if (s >= MAX_SECONDS) busy && busy.stop();
+      }, 250);
+      busy = { stop: () => { clearInterval(timer); if (rec.state !== "inactive") rec.stop(); stream.getTracks().forEach((t) => t.stop()); } };
+      rec.onstop = async () => {
+        busy = null;
+        const type = (rec.mimeType || mime || "audio/webm").split(";")[0];
+        const blob = new Blob(parts, { type });
+        if (!blob.size) { status.textContent = "Nothing was recorded. Try again."; render(); return; }
+        status.textContent = "Saving…";
+        try {
+          const r = await fetch("/api/takes/" + encodeURIComponent(n.note), { method: "PUT", headers: { "Content-Type": type }, body: blob });
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(body.error || r.status);
+          take = body.take; player.src = src();
+          status.textContent = "Take saved (" + ((Date.now() - started) / 1000).toFixed(1) + " s).";
+        } catch (e) { status.className = "status bad"; status.textContent = "Couldn't save the take (" + e.message + ")."; }
+        render(); document.querySelectorAll("button").forEach((b) => { if (b.textContent !== "■ Stop") b.disabled = false; });
+      };
+      rec.start(1000);
+      document.querySelectorAll("button").forEach((b) => { if (b.textContent !== "■ Stop") b.disabled = true; });
+    }
+
+    if (take) player.src = src();
+    render();
+    return c;
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>
