@@ -592,3 +592,34 @@ def test_takes_folders_keep_themselves_out_of_git(room_dir, tmp_path, capsys):
     assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
     for d in (room_dir / ".cut-review" / "takes" / "raw", tmp_path / "x"):
         assert (d / ".gitignore").read_text() == "*\n"
+
+
+def local_take(room_dir, note_id, ext="webm"):
+    d = room_dir / ".cut-review" / "takes" / "local"
+    d.mkdir(parents=True, exist_ok=True)
+    dst = d / f"{note_id}.{ext}"   # what the local recorder saves: a short tone, like a browser recording
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:duration=2:sample_rate=48000",
+                    "-c:a", "libopus" if ext == "webm" else "aac", str(dst)], check=True)
+    return dst
+
+
+@needs_ffmpeg
+def test_takes_converts_local_recordings_without_downloads(room_dir, tmp_path, capsys):
+    # a note recorded in the local recorder has no take in the room: the file is already here
+    save_takes(room_dir, tmp_path, take_note("loc", asset=None), take_note("both"), take_note("gone", asset=None, status="resolved"))
+    local_take(room_dir, "loc"); local_take(room_dir, "both", "m4a"); local_take(room_dir, "gone")
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    out = capsys.readouterr().out
+    rows = {r["note"]: r for r in json.loads((room_dir / ".cut-review" / "takes" / "takes.json").read_text())}
+    assert set(rows) == {"loc", "both"}                 # resolved notes stay out
+    assert '"action": "read"' not in out                # the local file wins over downloading the room's take
+    assert rows["loc"]["wav"] == "poll_line1_loc.wav" and rows["loc"]["seconds"] > 1
+
+
+def test_takes_with_only_local_recordings_needs_no_linked_room(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("loc", asset=None), link=False)
+    (room_dir / ".cut-review" / "takes" / "local").mkdir(parents=True)
+    (room_dir / ".cut-review" / "takes" / "local" / "loc.webm").write_bytes(b"x")
+    from cut_review.takes import local_file
+    assert local_file(Room.load(room_dir), {"id": "loc"}).name == "loc.webm"

@@ -19,7 +19,7 @@ from .notes import extract_frames, fix_writes, load_export, save_notes, saved_no
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, sha256
-from .takes import convert, open_takes, private_dir, raw_file, read_call, take_row, wav_name
+from .takes import convert, local_file, open_script_notes, private_dir, raw_file, read_call, take_of, take_row, wav_name
 
 UPLOAD_BATCH = 25          # Artifact asset upload: at most 25 files per call
 UPLOAD_MAX_BYTES = 15 << 20  # and at most 15 MB per binary file
@@ -236,14 +236,15 @@ def cmd_frames(a) -> int:
 
 def cmd_takes(a) -> int:
     room = Room.load(a.room)
-    takes = open_takes(saved_notes(room), {c["key"] for c in room.manifest.get("cuts", [])})
+    notes = open_script_notes(saved_notes(room), {c["key"] for c in room.manifest.get("cuts", [])})
+    takes = [(n, take_of(n)) for n in notes if take_of(n) or local_file(room, n)]
     if not takes:
         print("No open notes with a take.")
         return 0
     out = private_dir(Path(a.out) if a.out else room.state_dir / "takes")
     rows, reads, failed = [], [], 0
     for n, t in takes:
-        src = raw_file(room, t)
+        src = local_file(room, n) or (t and raw_file(room, t))   # a local recording wins over the room's take
         if not src:
             reads.append(read_call(room, t))
             continue

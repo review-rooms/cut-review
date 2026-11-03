@@ -15,13 +15,27 @@ from .records import probe_length
 from .room import Room, RoomError
 
 RAW = "takes/raw"   # under .cut-review/: where the Artifact reads save the downloaded takes
+LOCAL = "takes/local"   # under .cut-review/: where the local recorder (recorder/) saves takes, as <note id>.<ext>
 TRIM = "silenceremove=start_periods=1:start_threshold=-50dB"
 FILTER = f"{TRIM},areverse,{TRIM},areverse,loudnorm=I=-20"   # silence off both ends, loudness evened out
 
 
-def open_takes(notes: list[dict], cuts: set[str] | None = None) -> list[tuple[dict, dict]]:
-    """(note, take) for every open note with a well-formed take (on one of `cuts`, when given)."""
-    return [(n, t) for n in notes if n.get("status") == "open" and (cuts is None or n.get("cut") in cuts) and (t := take_of(n))]
+def safe(v) -> str:
+    """A note id or cut key reduced to letters, digits, _ and -, for file names note data can't steer."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(v))
+
+
+def open_script_notes(notes: list[dict], cuts: set[str]) -> list[dict]:
+    """Open notes on a script line of one of the room's cuts: the ones a take (room or local) can be for."""
+    return [n for n in notes if n.get("status") == "open" and n.get("cut") in cuts and script_line(n) is not None]
+
+
+def local_file(room: Room, note: dict) -> Path | None:
+    """The note's take recorded with the local recorder (<note id>.<ext> in .cut-review/takes/local/), or None."""
+    d = room.state_dir / LOCAL
+    if not d.is_dir():
+        return None
+    return next((p for p in sorted(d.glob(safe(note["id"]) + ".*")) if p.is_file() and p.suffix != ".json"), None)
 
 
 def take_row(room: Room, note: dict) -> dict:
@@ -67,7 +81,6 @@ def convert(src: Path, dst: Path) -> float:
 
 def wav_name(row: dict) -> str:
     """<cut>_line<n>_<note id>.wav, with anything but letters, digits, _ and - replaced, so note data can't steer it."""
-    safe = lambda v: re.sub(r"[^A-Za-z0-9_-]", "_", str(v))  # noqa: E731
     return f"{safe(row['cut'])}_line{row['line'] + 1}_{safe(row['note'])}.wav"
 
 
