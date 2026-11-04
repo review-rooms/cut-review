@@ -781,6 +781,14 @@ def test_page_tapping_a_clip_picture_picks_it(room_dir, capsys):
     assert "if (S.item !== name && navigator.userActivation?.isActive && performance.now() - pageInputAt > 400) pickItem(name);" in html
 
 
+def test_page_take_players_are_touch_targets(room_dir, capsys):
+    # the form's take player and a saved note's take player are controls too: 44 px on phones
+    html = page_html(room_dir)
+    coarse = html[html.index("@media (pointer: coarse), (max-width: 760px) {"):]
+    coarse = coarse[:coarse.index("\n}\n")]
+    assert ".take audio, .note audio { height: var(--hit); }" in coarse
+
+
 # ---------------------------------------------------------------- issue 14: init gives each cut and set its own key
 def test_init_gives_colliding_names_unique_keys(tmp_path, capsys):
     media = tmp_path / "media"

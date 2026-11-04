@@ -65,7 +65,7 @@ From field follow it once per presented frame (`requestVideoFrameCallback`), mov
 `transform` only; pointer drags (timeline, boxes on the frame or on a still) apply once per frame; snapshots with
 unchanged data are dropped and the rest render together in the next frame, reusing note cards, set items and
 cut-list buttons whose data didn't change, so playing takes and looping clips keep playing. On phones (or any coarse
-pointer) every control is at least 44 px tall, and the timeline marks get a larger hit area.
+pointer) every control is at least 44 px tall (take players too), and the timeline marks get a larger hit area.
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
 and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone
