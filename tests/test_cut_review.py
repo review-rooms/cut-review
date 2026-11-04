@@ -769,6 +769,18 @@ def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_di
     assert "drewAt = performance.now()" in html
 
 
+def test_page_tapping_a_clip_picture_picks_it(room_dir, capsys):
+    # the video covers most of a clip card: a tap on it picks the clip, but never unpicks (its controls live there)
+    html = page_html(room_dir)
+    clip = html[html.index('if (it.kind === "clip") {'):html.index("card.onclick = (ev) => {")]
+    # touch browsers send a video no click: a short press that didn't move is the tap
+    assert 'v.addEventListener("pointerup", (ev) => {' in clip
+    assert "< 10 && performance.now() - p.at < 600 && S.item !== it.name) pickItem(it.name);" in clip
+    # the play button and control bar swallow every event: a play or pause they caused picks the clip
+    assert 'v.addEventListener("pause", () => byControls(it.name));' in clip and "if (autoplayed) byControls(it.name)" in clip
+    assert "if (S.item !== name && navigator.userActivation?.isActive && performance.now() - pageInputAt > 400) pickItem(name);" in html
+
+
 # ---------------------------------------------------------------- issue 14: init gives each cut and set its own key
 def test_init_gives_colliding_names_unique_keys(tmp_path, capsys):
     media = tmp_path / "media"

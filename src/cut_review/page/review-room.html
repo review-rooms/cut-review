@@ -1582,6 +1582,19 @@ button { cursor: pointer; }
         if (it.kind === "clip") {
           v = el("video"); v.src = it.url; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.controls = true; media.append(v);
           for (const type of ["timeupdate", "seeked", "pause"]) v.addEventListener(type, () => clipFollow(v));
+          // the video covers most of the card, so a tap on it picks the clip (never unpicks: its controls are there).
+          // Touch browsers send it no click, so a tap is a short press that didn't move. Some controls (the play
+          // button, the control bar) keep every event from the page: a play or pause a gesture caused, with no page
+          // input, came from them and picks the clip too. Not autoplay
+          let press = null, autoplayed = false;
+          v.addEventListener("pointerdown", (ev) => { press = { x: ev.clientX, y: ev.clientY, at: performance.now() }; });
+          v.addEventListener("pointercancel", () => { press = null; });
+          v.addEventListener("pointerup", (ev) => {
+            const p = press; press = null;
+            if (p && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) < 10 && performance.now() - p.at < 600 && S.item !== it.name) pickItem(it.name);
+          });
+          v.addEventListener("play", () => { if (autoplayed) byControls(it.name); autoplayed = true; });
+          v.addEventListener("pause", () => byControls(it.name));
         }
         else {
           i = el("img"); i.src = it.url; i.alt = it.name; i.loading = "lazy"; i.decoding = "async"; i.draggable = false;
@@ -1598,7 +1611,8 @@ button { cursor: pointer; }
         b.onclick = (ev) => { ev.stopPropagation(); pickItem(it.name); $("noteText").focus(); };
         cap.append(b);
         card.append(media, cap);
-        // a tap picks or unpicks; not the clip's own controls, and not the click that ends drawing a box
+        // a tap picks or unpicks; not on the clip's video (its own taps pick, above), and not the click that ends
+        // drawing a box
         card.onclick = (ev) => {
           if (ev.target.closest("video, button") || performance.now() - drewAt < 400) return;
           pickItem(S.item === it.name ? null : it.name);
@@ -1616,6 +1630,11 @@ button { cursor: pointer; }
     if (S.item && !itemCards.has(S.item)) S.item = null;   // the item left the set
     sel.value = S.item || "";
     renderRegions();
+  }
+  let pageInputAt = -1e9;
+  for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => { pageInputAt = performance.now(); }, true);
+  function byControls(name) {
+    if (S.item !== name && navigator.userActivation?.isActive && performance.now() - pageInputAt > 400) pickItem(name);
   }
   // one way to pick: a tap, the arrow keys, the Note button, the menu or starting a box on a still. null is the
   // whole set. Picking another item (or none) drops a region drawn on the last one; the cards stay (a drag may be
