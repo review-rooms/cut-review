@@ -105,8 +105,11 @@ it, and never copy takes into a repo.
 
 ### Recording takes locally (experimental)
 
-The room can't record (claude.ai blocks the microphone), so when the owner wants to record how lines should sound,
-run the local recorder from the room project after `cut-review notes …`. The commands are in `recorder/README.md` of
+Optional, and only in a local session: offer the recorder only when this session runs on the owner's own machine
+(local Claude Code, with Docker or Python there) and the owner wants to record how lines should sound. In a cloud
+session, or when nothing runs on the owner's machine, don't mention it; the room and every other step work without
+it. The room can't record (claude.ai blocks the microphone), so in that case run the local recorder from the room
+project after `cut-review notes …`. The commands are in `recorder/README.md` of
 the cut-review repo: build the image, `mkdir -p .cut-review/takes/local`, run the container with the project
 mounted read-only and that folder writable, port on `127.0.0.1` only. Give the owner the link
 `http://localhost:8790`; it lists the open script notes and records one take per note into

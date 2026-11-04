@@ -102,6 +102,9 @@ input or state that is not valid JSON or not the expected shape (an upload resul
 
 ### 2b. The local recorder (`recorder/`, experimental)
 
+Optional and local only: nothing in the room, the CLI or the skill's loop needs it. The skill offers it only in a
+session running on the owner's machine, and `takes` looks for local takes only when `.cut-review/takes/local/` exists.
+
 claude.ai pages can't use the microphone, so `recorder/server.py` (standard library, run in Docker or directly)
 serves a page on the owner's machine that can. It lists the open notes on script lines from the saved notes and
 keeps one take per note in `.cut-review/takes/local/<note id>.<ext>` (`.webm`, `.m4a` or `.ogg`), which `takes`
