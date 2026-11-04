@@ -1046,7 +1046,8 @@ def test_page_version_dropdown_replaces_the_log_and_lists_history(room_dir, caps
 def test_page_past_version_shows_its_video_script_items_and_notes(room_dir, capsys):
     html = page_html(room_dir)
     past = html.split("const pastOf = ")[1].split("\n")[0]
-    for k in ("video: h.video", "poster: h.poster", "script: h.script || e.script", "items: h.items || e.items", "alts: []", "version: h.v"):
+    for k in ("video: h.video", "poster: h.poster", "script: h.script || []", "items: h.items || []",   # only what that version kept, never the current one's
+               "alts: []", "version: h.v"):
         assert k in past
     notes = html.split("const notesForSel = ")[1].split(";\n")[0]
     assert "(!S.viewV || (n.version || 1) === S.viewV)" in notes

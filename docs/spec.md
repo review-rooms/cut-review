@@ -50,7 +50,10 @@ turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a 
 tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
 on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
 leaves the line and puts the form back in the notes panel); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
-with "Looks right" / "Still wrong", a version menu per cut beside the title (hidden at v1: "v3 · current · <change>",
+with "Looks right" / "Still wrong", a version menu per cut beside the title (see Versions below), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
+deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
+
+Versions: a version menu per cut beside the title (hidden at v1: "v3 · current · <change>",
 then each past version newest first, "v2 · <change>"; versions from before `history` was kept are greyed, "v1 · not
 kept"). Picking a past version shows it read-only: its video and poster (no sound-version switch), its script when
 it kept one, a set's items as they were, and only the notes written on that version (`version`), in every status,
@@ -66,8 +69,7 @@ it drifts more than a frame, and stops at its own end when it is shorter. The tr
 current version's, and the current version stays live (notes, note form, script, verdict, boxes on its picture only).
 Sound plays from one side only, the current one (its chosen sound version) at first; a speaker on each label moves
 it. The past label's chip counts the notes written on that version and opens it read-only. Compare again, another
-cut or a version picked in the menu leaves compare; `#<key>@v3~v2` links to v3 compared with v2. a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
-deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
+cut or a version picked in the menu leaves compare; `#<key>@v3~v2` links to the current version compared with v2 (the left side is always the current version; the `v3` is only for show), and a hash that is itself a cut's key opens that cut. A link to a version that isn't kept shows the current one and corrects the address. A past version that kept no script shows none.
 A set's items are picked by tapping them (again to unpick; a tap on a clip's video, or playing or pausing it with its own controls, picks it but never unpicks), with the arrow keys or from the note form's menu; with
 none picked ("Whole set") a note is on the whole set (`item` null) and has no box, and the note box asks what should change in this set. A picked clip item takes a time or
 range like a cut: the note form shows From and To, which follow that clip until a time is stamped; In and Out (or `i`

@@ -308,6 +308,18 @@ with sync_playwright() as p:
           and not pg.locator("#b-cmp").is_visible() and not J(f"{V}.muted"))
     pg.locator(".cutbtn").filter(has_text="Carousel").first.click(); pg.wait_for_timeout(400)
     check("no Compare on a set", not pg.locator("#b-cmp").is_visible())
+    # deep links: a key with @ in it, a version that isn't kept, a script that wasn't kept
+    J("""(async () => { const t = window.__store.cuts.teaser; await window.__db.doc('cuts/teaser@v2').set({ ...t, title: 'Teaser at v2', order: 99 }); })()""")
+    pg.wait_for_timeout(400); J("location.hash = '#teaser@v2'"); pg.wait_for_timeout(500)
+    check("a key with @ in it opens that cut", J("document.getElementById('title').textContent") == "Teaser at v2" and J("location.hash") == "#teaser@v2")
+    J("location.hash = '#explainer@v9'"); pg.wait_for_timeout(500)
+    check("a link to a version that isn't kept shows the current one and fixes the address",
+          J("location.hash") == "#explainer" and pg.locator("#pastBar").is_hidden())
+    J("""(async () => { const x = window.__store.cuts.explainer; await window.__db.doc('cuts/explainer').set({ ...x,
+      history: [{ v: 1, video: x.history[0].video, poster: x.history[0].poster, note: '' }, ...x.history] }); })()""")
+    pg.wait_for_timeout(400); J("location.hash = '#explainer@v1'"); pg.wait_for_timeout(500)
+    check("a past version that kept no script shows none", J("document.getElementById('pastTxt').textContent") == "Viewing v1, read-only"
+          and pg.locator("#scriptCard").is_hidden())
     check("no page errors (compare)", not errs)
     if errs: print(errs)
     ctx.close(); b.close()

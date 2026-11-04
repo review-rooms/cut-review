@@ -499,7 +499,7 @@ button { cursor: pointer; }
   const dropEntries = () => { entryList = entryMap = null; };
   // the selected cut or set as on screen: on a past version (S.viewV, from its history) that version's video,
   // poster, script and items, with no alternate videos. Kept until the entry or the version changes
-  const pastOf = (e, h) => ({ ...e, video: h.video, poster: h.poster, script: h.script || e.script, length: h.length ?? e.length, items: h.items || e.items, alts: [], version: h.v });
+  const pastOf = (e, h) => ({ ...e, video: h.video, poster: h.poster, script: h.script || [], length: h.length ?? null, items: h.items || [], alts: [], version: h.v });
   const pastEntry = (e, v) => (e.history || []).find((h) => +h.v === v);
   let pastCache = null;
   const entryOf = (key) => {
@@ -695,15 +695,16 @@ button { cursor: pointer; }
   for (const ev of ["play", "pause", "seeking", "seeked", "ratechange"]) vid.addEventListener(ev, follow);
   vid2.addEventListener("loadedmetadata", follow);
   // per frame while playing: put the follower back when it drifts more than a frame (no layout, no text)
+  let resyncAt = 0;
   function drift(t) {
     if (!S.cmp || vid2.paused || vid2.seeking || !vid2.readyState) return;
-    const d2 = isFinite(vid2.duration) ? vid2.duration : Infinity, want = Math.min(t, d2 - 0.001);
-    if (Math.abs(vid2.currentTime - want) > 1 / FPS) vid2.currentTime = want;
+    const d2 = isFinite(vid2.duration) ? vid2.duration : Infinity, want = Math.min(t, d2 - 0.001), now = performance.now();
+    if (Math.abs(vid2.currentTime - want) > 1 / FPS && now - resyncAt > 500) { resyncAt = now; vid2.currentTime = want; }   // at most twice a second, so a slow network doesn't stutter
   }
 
   // ---------- verdict
   function renderVerdict() {
-    const v = verdictOf(S.sel)?.state || "none", ver = "v" + (entryOf(S.sel)?.version || 1), raw = S.verdicts[S.sel];
+    const v = verdictOf(S.sel)?.state || "none", ver = "v" + (rawEntry(S.sel)?.version || 1), raw = S.verdicts[S.sel];
     const stale = raw?.state === "changes" && v === "none";
     $("staleV").hidden = !stale;
     if (stale) setText($("staleV"), "Needs changes on v" + raw.version);
@@ -718,7 +719,7 @@ button { cursor: pointer; }
   $("verdict").addEventListener("click", async (ev) => {
     const b = ev.target.closest("button"); if (!b || !S.db || !S.sel) return;
     const state = b.getAttribute("aria-pressed") === "true" ? "none" : b.dataset.v;
-    try { await S.db.doc("verdicts/" + S.sel).set({ state, version: entryOf(S.sel)?.version || 1, at: new Date().toISOString() }); }
+    try { await S.db.doc("verdicts/" + S.sel).set({ state, version: rawEntry(S.sel)?.version || 1, at: new Date().toISOString() }); }
     catch (err) { onWriteError(err); }
   });
 
@@ -1821,6 +1822,7 @@ button { cursor: pointer; }
   // "#poll", "#poll@v2" (a past version) or "#poll@v3~v2" (the current version compared with v2): [key, v, compare]
   const hashOf = () => {
     const h = decodeURIComponent((location.hash || "").slice(1)), c = /^(.*)@v\d+~v(\d+)$/.exec(h), m = /^(.*)@v(\d+)$/.exec(h);
+    if (rawEntry(h)) return [h, null, null];   // keys may contain @ and ~
     return c ? [c[1], null, +c[2]] : m ? [m[1], +m[2], null] : [h, null, null];
   };
   function refresh() {
@@ -1832,7 +1834,7 @@ button { cursor: pointer; }
     if (S.sel && entryOf(S.sel)) select(S.sel, false);
     else {
       select(want && entryOf(want) ? want : all[0].key, false, want && entryOf(want) ? wantV : null);
-      if (want && !entryOf(want)) unknownKey(want); else if (wantC) startCompare(wantC);
+      if (want && !entryOf(want)) unknownKey(want); else { if (wantC) startCompare(wantC); setHash(); }
     }
   }
   // Snapshots don't render by themselves: an unchanged one is dropped, and the rest are drawn together in the
@@ -1897,6 +1899,7 @@ button { cursor: pointer; }
     if (!entryOf(k)) { unknownKey(k); return; }
     select(k, false, v);
     if (c) startCompare(c); else stopCompare();
+    setHash();   // a version that isn't kept shows the current one: say so in the address
   });
   updateStamp();
   boot();
