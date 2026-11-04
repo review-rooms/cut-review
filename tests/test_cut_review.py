@@ -368,6 +368,68 @@ def test_frames_cover_range_ends_and_box_regions(room_dir, tmp_path):
     assert red(box)[0] > 150 and red(plain)[0] < 40  # the box's corner is red, the plain frame stays black
 
 
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+def test_frames_box_regions_on_set_stills(room_dir, tmp_path):
+    still = room_dir / "media" / "carousel" / "01-hook.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=80x100", "-frames:v", "1", str(still)], check=True)
+    room = Room.load(room_dir)
+    box = {"x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5}
+    notes = load_export(export(tmp_path, {
+        "sb": {"id": "sb", "version": 1, "data": {"cut": "carousel", "item": "01-hook", "region": box, "text": "a", "status": "open"}},
+        "sp": {"id": "sp", "version": 1, "data": {"cut": "carousel", "item": "01-hook", "text": "no region", "status": "open"}},
+        "sc": {"id": "sc", "version": 1, "data": {"cut": "carousel", "item": "02-clip", "region": box, "text": "a clip", "status": "open"}},
+        "sd": {"id": "sd", "version": 1, "data": {"cut": "carousel", "item": "01-hook", "region": box, "text": "done", "status": "resolved"}},
+    }))
+    done = extract_frames(room, notes, width=80)
+    assert [p.name for _, p in done] == ["carousel_01-hook_sb.png"]
+    px = lambda p, x, y: subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-vf", f"crop=2:2:{x}:{y},scale=1:1", "-f", "rawvideo",  # noqa: E731
+                                         "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    out = done[0][1]
+    assert px(out, 41, 51)[0] > 150     # the box's top-left corner sits at the region's corner, in red
+    assert px(out, 2, 2)[0] < 40        # outside the region the still is untouched
+
+
+def test_frames_name_set_items_safely():
+    from cut_review.notes import _safe
+    assert _safe("01 hook/../x") == "01-hook-..-x" and _safe("///") == "item"
+
+
+def test_todo_shows_regions_on_set_items(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "sb": {"id": "sb", "version": 1, "data": {"cut": "carousel", "item": "01-hook", "t": None,
+                                                    "region": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}, "text": "Crop the logo", "status": "open"}},
+    }))
+    assert "01-hook [region x 10% y 20%, 30%×40%] · Crop the logo" in todo(room, notes)
+
+
+def test_page_fits_regions_to_the_picture_not_the_element(room_dir, capsys):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    fn = next(l for l in html.splitlines() if "const fit = " in l).strip()
+    js = fn + "\nconsole.log(JSON.stringify([fit(200, 250, 1080, 1350), fit(200, 250, 1000, 1000), fit(400, 250, 1000, 1000)]));"
+    got = json.loads(subprocess.run([node, "-e", js], capture_output=True, text=True, check=True).stdout)
+    assert got == [{"left": 0, "top": 0, "w": 200, "h": 250}, {"left": 0, "top": 25, "w": 200, "h": 200},
+                   {"left": 75, "top": 0, "w": 250, "h": 250}]
+
+
+def test_page_draws_and_saves_regions_on_set_stills(room_dir, capsys):
+    out = room_dir / "page.html"
+    run(room_dir, "page", "-o", str(out))
+    html = out.read_text()
+    assert "region: !S.region || (isSet && !curItem()) ? null : S.region" in html   # a set note keeps its region
+    assert "region: isSet ||" not in html
+    assert '$("b-region").hidden = !regionable()' in html                          # the button shows for a still
+    assert 'curItem().kind !== "clip"' in html                                      # but not for a clip item
+    assert 'dragToDraw(i, rg, () => true, () => pickItem(it.name))' in html         # dragging on a still draws
+    assert 'if (ev.key === "r") { ev.preventDefault(); if (!$("b-region").hidden)' in html  # r works on sets
+    assert "innerHTML" not in html
+
+
 def test_fix_writes_pin_the_note_and_name_the_cut_version(room_dir, tmp_path, capsys):
     uploaded(room_dir, capsys)
     room = Room.load(room_dir)

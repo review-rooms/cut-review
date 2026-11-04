@@ -5,7 +5,7 @@ Review rooms for rendered videos, run by Claude.
 You render videos (an edit, an animation, a set of social cuts). Claude puts them in a private claude.ai page, a
 **review room**, where you watch each cut on any device, pause on a frame and type a note (or mark a time range, or box a region
 of the frame), comment on still or clip
-sets such as a carousel, and give each cut a verdict. When you say "apply my notes", Claude reads them, changes
+sets such as a carousel (boxing a region of a still too), and give each cut a verdict. When you say "apply my notes", Claude reads them, changes
 whatever produced the video, re-renders, swaps the new version into the room and answers every note with what
 changed. You press "Looks right" or "Still wrong".
 
@@ -49,7 +49,7 @@ Later: *"Apply my notes."*
 
 ```bash
 cut-review notes .cut-review/export --result export-result.txt   # to-do list from the exported notes
-cut-review frames                          # the frame behind each timed note, as PNGs
+cut-review frames                          # the frame behind each timed note (and boxed stills), as PNGs
 # … change the source, re-render …
 cut-review uploads && cut-review assets …  # only changed files
 cut-review build --note poll="Counter pops 0.4 s earlier"
