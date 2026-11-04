@@ -193,7 +193,8 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
         ver = room.state["records"].get(f"cuts/{key}", room.state["records"].get(f"sets/{key}", {})).get("confirmed", {}).get("version")
         lines.append(f"## {key}: {titles.get(key, '(not in room.json)')}" + (f" (now v{ver})" if ver else ""))
         for n in mine:
-            lines.append(f"- [{n.get('status')}] {where(n)} · {n['text']}  (id {n['id']}, written on v{n.get('version', 1)})")
+            text = n["text"] or ("(no words: listen to the take)" if n.get("take") else "")
+            lines.append(f"- [{n.get('status')}] {where(n)} · {text}  (id {n['id']}, written on v{n.get('version', 1)})")
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
                 lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")

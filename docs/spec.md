@@ -73,7 +73,7 @@ and only then, the note form offers **🎙 Record how it should sound**, which r
 file upload. The button shows only where the mic is usable (permissions policy allows it and the permission isn't
 denied); claude.ai blocks the mic in its frames today, on desktop and in the iOS app, so it stays hidden there until
 that changes. The take uploads at once (as `video/mp4` or `video/webm`), shows as a player with Redo and Remove, and
-Add note waits for the upload. Redo, Remove, detaching the line, moving to another line or cut, and leaving the line
+Add note waits for the upload. A take is enough on its own: the note can have no words (`text` is then `""`, and `cut-review notes` shows it as `(no words: listen to the take)`). Redo, Remove, detaching the line, moving to another line or cut, and leaving the line
 mid-recording drop the take (an uploaded one is deleted); deleting your own note deletes its take. Saved notes with a
 take show a 🎙 button with its length and a player; script lines with one show 🎙 beside their note count.
 

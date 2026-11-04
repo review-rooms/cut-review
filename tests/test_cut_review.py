@@ -755,7 +755,7 @@ def test_page_flags_bad_times_and_spaces_cues(room_dir, capsys):
     html = page_html(room_dir)
     assert "&& !badTime();" in html and "isn't a time" in html                        # issue 7
     assert '{ if (out.length) out.push(document.createTextNode(" ")); out.push(el("span", "cue"' in html   # issue 8
-    assert "write a few words and add the note" in html                                # issue 12
+    assert "then add the note, with a few words if you like" in html                # issue 12, take-only notes
     assert "?? (S.line && S.line.i === i && S.line.qs != null ? S.line : null)" in html  # issue 5
 
 
@@ -929,3 +929,23 @@ def test_missing_input_file_is_a_one_line_error(room_dir, capsys, args):
     missing = room_dir / "nope.txt"
     assert run(room_dir, *args, str(missing)) == 1
     assert f"no such file or folder: {missing}" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- a voice take alone is enough for a note
+
+def test_page_adds_a_note_with_a_take_and_no_text(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "const hasWords = () => !!$(\"noteText\").value.trim() || !!(S.line && S.take);" in html
+    assert "&& hasWords() &&" in html                              # Add is enabled by a take alone
+    assert "if (!hasWords()) return;" in html                      # Enter saves it too
+    assert "if ((!text && !take) || !e) return;" in html           # the row is written with text ""
+
+
+def test_todo_shows_a_take_only_note(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "t": {"id": "t", "version": 1, "data": {"cut": "poll", "t": 0, "line": 0, "text": "", "status": "open",
+                                                  "take": {"asset": A, "seconds": 4.2, "type": "video/mp4"}}},
+    }))
+    out = todo(room, notes)
+    assert "· (no words: listen to the take)  (id t, written on v1)" in out and "take: 4.2 s" in out

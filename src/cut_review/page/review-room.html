@@ -1057,7 +1057,7 @@ button { cursor: pointer; }
     S.take = { blob, seconds: r.seconds, type, upload, at: r.at, url: URL.createObjectURL(blob) };
     $("takeAudio").src = S.take.url;
     $("composerHint").textContent = $("noteText").value.trim() ? "Got it. Play it back, then add the note."
-      : "Got it. Play it back, then write a few words and add the note.";   // issue 12
+      : "Got it. Play it back, then add the note, with a few words if you like.";   // issue 12
     updateStamp();
   }
   // ---------- end of live recording
@@ -1065,7 +1065,9 @@ button { cursor: pointer; }
   // ---------- composer
   // a From or To that doesn't parse is flagged (aria-invalid) and holds Add back until it is fixed (issue 7)
   const badTime = () => !$("timeRow").hidden && ($("tFrom").hasAttribute("aria-invalid") || $("tTo").hasAttribute("aria-invalid"));
-  const canAdd = () => !!S.db && S.canWrite && !!S.sel && !!$("noteText").value.trim() && !S.takeBusy && !S.saving && !badTime();
+  // a note needs words, or a voice take on its line: the take says it
+  const hasWords = () => !!$("noteText").value.trim() || !!(S.line && S.take);
+  const canAdd = () => !!S.db && S.canWrite && !!S.sel && hasWords() && !S.takeBusy && !S.saving && !badTime();
   function clearBadTimes() {
     if (!$("tFrom").hasAttribute("aria-invalid") && !$("tTo").hasAttribute("aria-invalid")) return;
     for (const id of ["tFrom", "tTo"]) $(id).removeAttribute("aria-invalid");
@@ -1179,10 +1181,7 @@ button { cursor: pointer; }
   async function addNote() {
     if (S.saving || !S.db || !entryOf(S.sel) || S.takeBusy) return;
     if (badTime()) { (($("tFrom").hasAttribute("aria-invalid") && $("tFrom")) || $("tTo")).focus(); return; }
-    if (!$("noteText").value.trim()) {   // Enter on an empty note: say what's missing
-      if (S.take) $("composerHint").textContent = "Write a few words about the take, then add the note.";
-      return;
-    }
+    if (!hasWords()) return;
     S.saving = true; updateStamp();   // one save at a time (Enter skips the disabled button); hides Redo and Remove
     const sel = S.sel, line = S.line, take = S.line && S.take ? S.take : null;
     try {
@@ -1200,7 +1199,7 @@ button { cursor: pointer; }
       }
       const text = $("noteText").value.trim();
       const e = entryOf(S.sel);
-      if (!text || !e) return;
+      if ((!text && !take) || !e) return;
       const isSet = e.kind === "set", tm = timed();   // a cut, or a set's picked clip, unless Whole cut / Whole clip
       const row = {
         cut: e.key, text, status: "open", reply: "", by: S.me || null,
@@ -1484,7 +1483,7 @@ button { cursor: pointer; }
     top.append(el("span", "st", n.status === "fixed" ? (n.fixedIn ? "Fixed in v" + n.fixedIn : "Fixed") : n.status === "open" ? "" : STATUS_LABEL[n.status] || n.status));
     card.append(top);
     if (n.quote) card.append(el("div", "quote", "“" + n.quote + "”"));
-    card.append(el("div", "body", n.text));
+    if (n.text) card.append(el("div", "body", n.text));   // a take-only note has no words
     const take = !isSet && takeOf(n);
     if (take) {
       const a = el("audio"); a.controls = true; a.preload = "none"; a.src = "/_blob/" + take.asset;

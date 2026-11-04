@@ -88,7 +88,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
 ## Notes with a voice take
 
 On a script note the owner can record themselves saying the line (or the words they selected) the way it should
-sound. The to-do list shows it as `take: 4.2 s (asset 39bb…)`.
+sound. The to-do list shows it as `take: 4.2 s (asset 39bb…)`. A note can be only a take, with no words (shown as
+`(no words: listen to the take)`): then the take is the whole note, so listen to it before changing anything.
 
 1. After `cut-review notes …`, run `cut-review takes`. It prints one `Artifact` `read` call per open take (`url`,
    `path` = the asset id, `out_dir`); run them one by one.
