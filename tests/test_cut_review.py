@@ -563,6 +563,24 @@ def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
     assert "take: S.line && take && asset" in html and 'use("assets")' in html
 
 
+def test_page_layout_puts_the_note_form_under_the_script_line(room_dir, capsys):
+    html = page_html(room_dir)
+    # the form is one element: docked in the notes panel, floated under a script line while a note is on one
+    assert html.count('id="composer"') == 1 and 'id="dock"' in html and 'id="scriptBox"' in html
+    assert '$("scriptBox").append(c)' in html and '$("dock").append(c)' in html
+    assert "placeComposer();" in html.split("function renderLineTarget()")[1].split("}")[0]   # follows the line
+    assert 'ev.key === "Escape" && S.line' in html                                            # Esc leaves the line
+    assert "if (q) { pickLine(i, q); return; }" in html                  # selecting words opens the note on them
+    assert "S.line ||" in html.split("function followScript(t)")[1].split("function ")[0]   # no follow-scroll while writing
+
+
+def test_page_verdict_toggles_back_to_unreviewed(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'b.getAttribute("aria-pressed") === "true" ? "none" : b.dataset.v' in html
+    assert 'data-v="none"' not in html                  # two buttons: Needs changes, Approve vN
+    assert "<video id=\"vid\" playsinline preload" in html and " controls preload" not in html.split('id="vid"')[1][:40]
+
+
 @needs_ffmpeg
 def test_takes_names_stay_inside_the_out_dir(room_dir, tmp_path, capsys):
     save_takes(room_dir, tmp_path, take_note("../evil"), take_note("x2", asset=B, cut="../../outside"))

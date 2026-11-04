@@ -50,9 +50,9 @@ the room project next to the work that renders the videos; never commit `.cut-re
    `url` = the room). Save the result to a file and run `cut-review written <file>`.
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
    frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; fill To (next to From) in the note form,
-   or drag the timeline, for a note on a time range, and dragging on the picture (or "Draw region", `r`) to box the part of the frame a note is about.
-   The script panel follows the video: tap a word to comment on it (more taps or Shift-click take a span), select a
-   few characters for just those, or press Comment for the whole line.
+   or drag the timeline, for a note on a time range, and dragging on the picture (or "Box", `r`) to box the part of the frame a note is about.
+   The script under the picture follows the video: tap a word to comment on it (more taps or Shift-click take a span),
+   select a few characters for just those, or press Comment for the whole line; the note opens right under the line.
 
 ## Apply the owner's notes
 
