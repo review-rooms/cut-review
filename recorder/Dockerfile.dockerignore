@@ -1,0 +1,5 @@
+*
+!src/cut_review/**
+!recorder/server.py
+!recorder/page.html
+**/__pycache__
