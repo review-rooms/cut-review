@@ -767,3 +767,20 @@ def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_di
     assert 'return e?.kind === "set" && S.item ? (e.items || []).find' in html   # none picked: no item, so no Box
     assert "performance.now() - drewAt < 400" in html          # the click that ends a box on a still doesn't unpick
     assert "drewAt = performance.now()" in html
+
+
+# ---------------------------------------------------------------- issue 16: notes on a missing path
+def test_notes_command_rejects_a_missing_export(room_dir, tmp_path, capsys):
+    missing = tmp_path / "does" / "not" / "exist.json"
+    assert run(room_dir, "notes", str(missing)) == 1
+    err = capsys.readouterr().err
+    assert f"no such file or folder: {missing}" in err and "no notes found" not in err
+    assert not (room_dir / ".cut-review" / "notes.json").exists()
+
+
+def test_notes_command_rejects_a_missing_result_without_saving(room_dir, tmp_path, capsys):
+    e = export(tmp_path, {"n1": {"cut": "poll", "t": 9.2, "text": "Late", "status": "open", "version": 1}})
+    missing = tmp_path / "result.txt"
+    assert run(room_dir, "notes", str(e), "--result", str(missing)) == 1
+    assert f"no such file or folder: {missing}" in capsys.readouterr().err
+    assert not (room_dir / ".cut-review" / "notes.json").exists()
