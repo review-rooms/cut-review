@@ -36,7 +36,7 @@ One generic page, the same for every room. Everything room-specific comes from i
 Layout ("script under the picture", from the Claude Design board *Review Room Layouts*, option 1b): a top bar with the
 room's title; the cut list on the left (one line per cut: verdict dot, name, open-note count; a chip row on phones);
 the player in the middle with the cut's title, facts, sound-version switch and version menu above it, a transport row
-(play, frame steps, time and frame, the timeline with a thin notes lane right above it, speed, loop, download) under it, and the script following
+(play, frame steps, time and frame, the timeline with a thin notes lane right above it, speed 0.5× 1× 1.5× 2×, loop, download) under it, and the script following
 along beneath; notes on the right with the note form docked under them and the verdict (Needs changes, Approve vN)
 at the foot. Below 1180 px the notes go under the picture and the page scrolls as one. One blue for open, amber for
 fixed and needs changes, green for resolved and approved, grey for won't fix; Geist and Geist Mono.

@@ -322,7 +322,12 @@ with sync_playwright() as p:
     s1, s2 = J(f"[{V}.currentTime, {V2}.currentTime]")
     check(f"frame steps move both ({s1:.3f}, {s2:.3f})", abs(s1 - t1 - 2 / 30) < 0.02 and abs(s1 - s2) < 0.05)
     pg.locator('[data-rate="0.5"]').click(); pg.wait_for_timeout(100)
-    check("speed reaches the past picture", J(f"{V2}.playbackRate") == 0.5); pg.locator('[data-rate="1"]').click()
+    check("speed reaches the past picture", J(f"{V2}.playbackRate") == 0.5)
+    for r in ("1.5", "2"):
+        pg.locator(f'[data-rate="{r}"]').click(); pg.wait_for_timeout(100)
+        check(f"{r}× plays both at {r}× and is the only one pressed", J(f"[{V}.playbackRate, {V2}.playbackRate]") == [float(r)] * 2
+              and J("[...document.querySelectorAll('[data-rate]')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.rate)") == [r])
+    pg.locator('[data-rate="1"]').click()
     check("sound from the current version only", J(f"[{V}.muted, {V2}.muted]") == [False, True])
     pg.locator("#snd2").click(); pg.wait_for_timeout(100)
     check("the speaker moves the sound to v2", J(f"[{V}.muted, {V2}.muted]") == [True, False])
