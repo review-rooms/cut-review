@@ -1064,3 +1064,16 @@ def test_page_past_version_is_read_only(room_dir, capsys):
     assert "if (S.viewV) return;" in html.split("function pickLine(i, q)")[1].split("\n")[1]
     assert "const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false;" in html
     assert "if (S.canWrite && S.db && !S.viewV)" in html                          # no Looks right / Reopen on the past
+
+
+# ---------------------------------------------------------------- the harness can start with notes
+
+def test_harness_seeds_notes_from_an_optional_file(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("harness", Path(__file__).parent / "harness" / "serve.py")
+    harness = importlib.util.module_from_spec(spec); spec.loader.exec_module(harness)
+    out = tmp_path / ".cut-review" / "out"; out.mkdir(parents=True)
+    (out / "cuts__a.json").write_text('{"title": "A"}')
+    assert "notes" not in harness.seed(tmp_path)
+    (tmp_path / ".cut-review" / "harness-notes.json").write_text('{"n1": {"cut": "a", "text": "hi", "version": 1}}')
+    assert harness.seed(tmp_path)["notes"] == {"n1": {"cut": "a", "text": "hi", "version": 1}}

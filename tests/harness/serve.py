@@ -10,6 +10,7 @@ Files the page uploads (voice takes) go to `.cut-review/harness-assets/` and are
 `window.__assets` lists uploads and deletions. `?noassets` / `?nodownloads` leave those capabilities out.
 `?mic=fake` gives the page a microphone that plays a tone (as if the frame allowed the mic); `?mic=blocked`
 answers like claude.ai today (permission denied).
+`.cut-review/harness-notes.json` (`{id: note}`), if the room has one, seeds the notes.
 Nothing here talks to claude.ai.
 """
 from __future__ import annotations
@@ -105,6 +106,9 @@ def seed(room: Path) -> dict:
         if coll == "notes":
             continue
         store.setdefault(coll, {})[doc] = json.loads(f.read_text())
+    seeded = room / ".cut-review" / "harness-notes.json"   # optional notes to start with: {id: note}
+    if seeded.is_file():
+        store["notes"] = json.loads(seeded.read_text())
     return store
 
 
