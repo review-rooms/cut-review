@@ -35,7 +35,8 @@ the room project next to the work that renders the videos; never commit `.cut-re
 ## Create a room
 
 1. `cut-review init --media <folder with the videos> --title "<name>"` writes `room.json`: one cut per video
-   (`<name>.poster.png` next to a video becomes its poster) and one set per subfolder of stills or clips.
+   (`<name>.poster.png` next to a video becomes its poster) and one set per subfolder of stills or clips,
+   each with its own key (names that clash, like `a b.mp4` and `a-b.mp4`, get `a-b` and `a-b-2`).
    Edit it: `title`, `subtitle`, `groups` (`[{id, label}]`, sidebar order), and per cut `title`, `short`, `group`,
    `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (first one is highlighted), `description`, and `script`
    (`[{from, to, text}]` in seconds: voice-over or captions, clickable in the room). `scriptLabel` names that table.

@@ -80,7 +80,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 
 | Command | Does |
 | --- | --- |
-| `init [--media DIR]` | Writes a `room.json` skeleton listing the videos (and `*.poster.png`) found in DIR. |
+| `init [--media DIR]` | Writes a `room.json` skeleton listing the videos (and `*.poster.png`) found in DIR. Keys come from the file and folder names; names that reduce to the same key (`a b.mp4` and `a-b.mp4`, `c.mp4` and `c.mov`) get `-2`, `-3`, ... so every cut and set has its own. |
 | `page [-o FILE]` | Writes the page HTML, ready to publish with the Artifact tool, with `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`. |
 | `link URL` | Records the published room's URL in the state. |
 | `uploads` | Lists files that are new or changed since their last upload (sha-256), in batches of at most 25, as absolute paths for `Artifact` `file_paths`. |

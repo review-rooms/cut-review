@@ -54,12 +54,13 @@ def cmd_init(a) -> int:
         raise RoomError(f"media folder {root} does not exist")
     files = sorted(p for p in root.iterdir() if p.is_file() and not p.name.startswith("."))
     names = {p.name for p in files}
+    used: set[str] = set()              # cuts and sets share one key space
     cuts = []
     for p in files:
         if p.suffix.lower() not in VIDEO_EXT:
             continue
         poster = next((n for n in (f"{p.stem}.poster.png", f"{p.stem}.poster.jpg", f"{p.stem}.png", f"{p.stem}.jpg") if n in names), None)
-        c = {"key": _key(p.stem), "file": p.name, "title": p.stem.replace("-", " ").replace("_", " ").capitalize(),
+        c = {"key": _unique_key(p.stem, used), "file": p.name, "title": p.stem.replace("-", " ").replace("_", " ").capitalize(),
              "group": "cuts", "aspect": "9:16", "tags": [], "description": "", "script": []}
         if poster:
             c["poster"] = poster
@@ -67,7 +68,7 @@ def cmd_init(a) -> int:
     sets = []
     for sub in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")):
         if any(q.suffix.lower() in MEDIA_EXT for q in sub.iterdir()):
-            sets.append({"key": _key(sub.name), "dir": sub.name, "title": sub.name.capitalize(), "group": "sets",
+            sets.append({"key": _unique_key(sub.name, used), "dir": sub.name, "title": sub.name.capitalize(), "group": "sets",
                          "aspect": "4:5", "description": ""})
     groups = [{"id": "cuts", "label": "Cuts"}] + ([{"id": "sets", "label": "Sets"}] if sets else [])
     manifest = {"title": a.title or d.name, "subtitle": "", "scriptLabel": "Script",
@@ -80,6 +81,17 @@ def cmd_init(a) -> int:
 
 def _key(s: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "_-." else "-" for ch in s).strip("-.") or "cut"
+
+
+def _unique_key(s: str, used: set[str]) -> str:
+    """`_key(s)`, with -2, -3, ... added when another cut or set already has it (`a b.mp4` and `a-b.mp4`)."""
+    base = k = _key(s)
+    n = 1
+    while k in used:
+        n += 1
+        k = f"{base}-{n}"
+    used.add(k)
+    return k
 
 
 # What the published page needs from the artifact viewer. `downloads` lets the Download button save a video
