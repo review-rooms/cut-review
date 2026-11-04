@@ -767,3 +767,17 @@ def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_di
     assert 'return e?.kind === "set" && S.item ? (e.items || []).find' in html   # none picked: no item, so no Box
     assert "performance.now() - drewAt < 400" in html          # the click that ends a box on a still doesn't unpick
     assert "drewAt = performance.now()" in html
+
+
+# ---------------------------------------------------------------- issue 14: init gives each cut and set its own key
+def test_init_gives_colliding_names_unique_keys(tmp_path, capsys):
+    media = tmp_path / "media"
+    (media / "c").mkdir(parents=True)
+    (media / "c" / "01.png").write_bytes(b"still")
+    for name in ("a b.mp4", "a-b.mp4", "c.mp4", "c.mov"):
+        (media / name).write_bytes(b"video")
+    assert run(tmp_path, "init", "--media", "media") == 0
+    m = json.loads((tmp_path / "room.json").read_text())
+    assert [(c["key"], c["file"]) for c in m["cuts"]] == [("a-b", "a b.mp4"), ("a-b-2", "a-b.mp4"), ("c", "c.mov"), ("c-2", "c.mp4")]
+    assert [s["key"] for s in m["sets"]] == ["c-3"]          # keys are shared by cuts and sets
+    Room.load(tmp_path)                                       # the manifest validates: no key is used twice
