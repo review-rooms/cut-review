@@ -369,7 +369,7 @@ def test_region_of_clamps_and_rejects_bad_regions():
     assert region_of({"region": {"x": 0.8, "y": -0.1, "w": 0.5, "h": 0.3}}) == (0.8, 0.0, pytest.approx(0.2), 0.3)
     assert region_of({"region": {"x": 0.2, "y": 0.2, "w": 0, "h": 0.3}}) is None
     assert region_of({"region": {"x": "a"}}) is None and region_of({"region": None}) is None and region_of({}) is None
-    assert where({"t": None, "tEnd": None}) == "whole" and where({"item": "01-hook", "t": 3}) == "01-hook"
+    assert where({"t": None, "tEnd": None}) == "whole" and where({"item": "01-hook", "t": None}) == "01-hook"
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
@@ -763,7 +763,7 @@ def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_di
     # the merge of #17 (boxes on stills) with #18 (tap to pick or unpick): one pickItem, where null is the whole set
     html = page_html(room_dir)
     pick = html[html.index("function pickItem(name)"):]
-    assert "name = name || null;" in pick and "if (name !== S.item) { S.region = null;" in pick   # unpick drops a box
+    assert "name = name || null;" in pick and "const moved = name !== S.item;\n    if (moved) { S.region = null;" in pick   # unpick drops a box
     assert 'return e?.kind === "set" && S.item ? (e.items || []).find' in html   # none picked: no item, so no Box
     assert "performance.now() - drewAt < 400" in html          # the click that ends a box on a still doesn't unpick
     assert "drewAt = performance.now()" in html
@@ -837,3 +837,58 @@ def test_notes_command_rejects_a_missing_result_without_saving(room_dir, tmp_pat
     assert run(room_dir, "notes", str(e), "--result", str(missing)) == 1
     assert f"no such file or folder: {missing}" in capsys.readouterr().err
     assert not (room_dir / ".cut-review" / "notes.json").exists()
+
+
+# ---------------------------------------------------------------- issue 13: timed notes on a set's clip item
+def test_where_and_todo_show_times_on_set_clips(room_dir, tmp_path):
+    assert where({"item": "02-clip", "t": 1.5}) == "02-clip @ 0:01.5"
+    assert where({"item": "02-clip", "t": 1, "tEnd": 2.5}) == "02-clip @ 0:01.0–0:02.5"
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "sc": {"id": "sc", "version": 1, "data": {"cut": "carousel", "item": "02-clip", "t": 1, "tEnd": 2, "text": "Too fast", "status": "open"}},
+    }))
+    assert "- [open] 02-clip @ 0:01.0–0:02.0 · Too fast" in todo(room, notes)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+def test_frames_extract_timed_notes_on_set_clips_and_skip_what_they_cannot(room_dir, tmp_path, capsys):
+    clip = room_dir / "media" / "carousel" / "02-clip.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x80:d=3:r=10",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)
+    m = json.loads((room_dir / "room.json").read_text())
+    m["sets"].append({"key": "remote", "items": [{"name": "far", "file": "gone/far.mp4"}]})   # a clip that isn't on disk
+    (room_dir / "room.json").write_text(json.dumps(m))
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "pt": {"id": "pt", "version": 1, "data": {"cut": "carousel", "item": "02-clip", "t": 1, "text": "a", "status": "open"}},
+        "rg": {"id": "rg", "version": 1, "data": {"cut": "carousel", "item": "02-clip", "t": 0.5, "tEnd": 2, "text": "b", "status": "open"}},
+        "st": {"id": "st", "version": 1, "data": {"cut": "carousel", "item": "01-hook", "t": 1, "text": "time on a still", "status": "open"}},
+        "un": {"id": "un", "version": 1, "data": {"cut": "carousel", "item": "nope", "t": 1, "text": "unknown item", "status": "open"}},
+        "fa": {"id": "fa", "version": 1, "data": {"cut": "remote", "item": "far", "t": 1, "text": "not here", "status": "open"}},
+        "dn": {"id": "dn", "version": 1, "data": {"cut": "carousel", "item": "02-clip", "t": 1, "text": "done", "status": "resolved"}},
+    }))
+    skipped = []
+    done = extract_frames(room, notes, width=64, skipped=skipped)
+    assert sorted(p.name for _, p in done) == ["carousel_02-clip_0000.50_rg_start.png", "carousel_02-clip_0001.00_pt.png",
+                                               "carousel_02-clip_0002.00_rg_end.png"]
+    assert all(p.stat().st_size > 0 for _, p in done)
+    assert sorted(n["id"] for n, _ in skipped) == ["fa", "st", "un"]
+    why = {n["id"]: r for n, r in skipped}
+    assert "not on disk" in why["fa"] and "still" in why["st"] and "not in" in why["un"]
+    save_notes(room, notes)
+    assert run(room_dir, "frames", "--width", "64") == 0
+    out = capsys.readouterr().out
+    assert "carousel_02-clip_0001.00_pt.png" in out and "skipped fa" in out and "not on disk" in out
+
+
+def test_page_times_notes_on_a_picked_set_clip(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "const clipVid = () =>" in html                                           # the picked clip item's video
+    assert "const timed = () =>" in html and '$("timeRow").hidden = !timed();' in html  # From/To show for a clip
+    assert "t: tm ? Math.round(S.stampT * 100) / 100 : null" in html                 # and the note keeps its time
+    assert "        t: isSet ||" not in html
+    assert "S.stampT = stampNow(); S.stampLocked = true;" in html                    # In stamps the clip's time
+    assert "const v = itemCards.get(n.item)?.vid;" in html                           # a clip note seeks its clip
+    assert 'n.item + (span ? " · " + span : "")' in html                             # and shows its time
+    assert "if (!S.item && !S.stampLocked && S.stampEnd == null)" in html            # paint() leaves a clip's stamp alone
+    assert "innerHTML" not in html

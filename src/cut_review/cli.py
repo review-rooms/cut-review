@@ -241,11 +241,14 @@ def cmd_notes(a) -> int:
 
 def cmd_frames(a) -> int:
     room = Room.load(a.room)
-    done = extract_frames(room, saved_notes(room), a.width)
-    if not done:
+    skipped: list[tuple[dict, str]] = []
+    done = extract_frames(room, saved_notes(room), a.width, skipped)
+    if not done and not skipped:
         print("No open timed or region notes.")
     for n, p in done:
         print(f"{p}  ← {n['cut']} {where(n)}: {n['text'][:80]}")
+    for n, why in skipped:
+        print(f"skipped {n['id']} ({n['cut']} {where(n)}): {why}")
     return 0
 
 
@@ -374,7 +377,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--all", action="store_true", help="also list fixed, resolved and won't-fix notes")
     s.set_defaults(fn=cmd_notes)
 
-    s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note, and set stills with a region (ffmpeg)")
+    s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (on cuts and set clips), and set stills with a region (ffmpeg)")
     s.add_argument("--width", type=int, default=540)
     s.set_defaults(fn=cmd_frames)
 

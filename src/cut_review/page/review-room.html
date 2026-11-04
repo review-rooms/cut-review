@@ -400,7 +400,7 @@ button { cursor: pointer; }
       <div class="crow" id="pickRow">
         <button class="ghost" id="b-region" aria-pressed="false" title="Draw a box around what the note is about (r, or just drag on the picture)">Box</button>
         <button class="ghost" id="b-unregion" hidden title="Remove the box" aria-label="Remove the box">✕ box</button>
-        <label id="generalLbl"><input type="checkbox" id="general"> Whole cut</label>
+        <label id="generalLbl"><input type="checkbox" id="general"> <span id="generalTxt">Whole cut</span></label>
         <select id="itemSel" hidden aria-label="Item"></select>
       </div>
       <textarea id="noteText" rows="2" placeholder="What should change here? Pausing to type stamps the current frame."></textarea>
@@ -525,7 +525,6 @@ button { cursor: pointer; }
     $("workView").classList.toggle("noscript", isSet || !(e.script || []).length);
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
-    $("generalLbl").hidden = isSet;
     if (changed) {
       S.stampEnd = null; S.region = null; S.focus = null; S.line = null; S.item = null;
       renderLineTarget(); hideSelBtn(); setDrawing(false); clearBadTimes();
@@ -852,7 +851,7 @@ button { cursor: pointer; }
     if (tc !== lastTc) { lastTc = tc; tcNode.nodeValue = tc; }
     if (fr !== lastFr) { lastFr = fr; frNode.nodeValue = fr; }
     followScript(t);
-    if (!S.stampLocked && S.stampEnd == null) { S.stampT = t; paintFrom(); }
+    if (!S.item && !S.stampLocked && S.stampEnd == null) { S.stampT = t; paintFrom(); }   // S.item: a set's clip has its own time
     regionsFollow(t);
   }
   let looping = false;
@@ -987,6 +986,8 @@ button { cursor: pointer; }
       itemCards.get(S.item)?.card.scrollIntoView({ block: "nearest", behavior: glide() });
       return;
     }
+    // a picked clip takes a time or range like a cut (issue 13)
+    if (kind === "set" && (ev.key === "i" || ev.key === "o") && clipVid()) { ev.preventDefault(); $(ev.key === "i" ? "b-restamp" : "b-end").click(); return; }
     if (kind !== "cut") return;
     if (ev.key === "k") { ev.preventDefault(); $("b-play").click(); }
     else if (ev.key === ",") { ev.preventDefault(); $("b-back").click(); }
@@ -1076,12 +1077,29 @@ button { cursor: pointer; }
     const v = fmt(S.stampT);
     if (f.value !== v) f.value = v;
   }
+  // A note's time comes from the cut's video, or in a set from the picked clip item's own video (issue 13): From and
+  // To, In and Out, i and o and typed times work on whichever one the note is on. Whole cut / Whole clip drops it.
+  const clipVid = () => { const it = curItem(); return it && it.kind === "clip" ? itemCards.get(it.name)?.vid || null : null; };
+  const timed = () => (entryOf(S.sel)?.kind === "cut" || !!clipVid()) && !$("general").checked;
+  const stampNow = () => { const c = clipVid(); return c ? c.currentTime || 0 : nowT(); };
+  const stampDur = () => { const c = clipVid(); return !c ? dur() : isFinite(c.duration) && c.duration > 0 ? c.duration : Infinity; };
+  function stampSeek(t) {
+    const c = clipVid(); if (!c) { seek(t, true); return; }
+    c.pause(); c.currentTime = Math.max(0, Math.min(t, stampDur() - 0.001));
+  }
+  // the picked clip plays on its own: its From follows it (a few times a second) until a time is stamped
+  function clipFollow(v) {
+    if (clipVid() !== v || S.stampLocked || S.stampEnd != null) return;
+    S.stampT = v.currentTime || 0; paintFrom();
+  }
   function updateStamp() {
     renderTake();
-    const isSet = entryOf(S.sel)?.kind === "set";
+    const isSet = entryOf(S.sel)?.kind === "set", clip = isSet && !!clipVid();
     if (S.stampEnd != null && S.stampEnd < S.stampT) [S.stampT, S.stampEnd] = [S.stampEnd, S.stampT];
-    const ranged = !isSet && !$("general").checked && S.stampEnd != null;
-    $("timeRow").hidden = isSet || $("general").checked;
+    const ranged = timed() && S.stampEnd != null;
+    $("timeRow").hidden = !timed();
+    $("generalLbl").hidden = isSet && !clip;
+    setText($("generalTxt"), clip ? "Whole clip" : "Whole cut");
     for (const [id, v] of [["tFrom", S.stampT], ["tTo", ranged ? S.stampEnd : null]]) {
       if (document.activeElement === $(id) || $(id).hasAttribute("aria-invalid")) continue;  // being typed in, or flagged
       const s = v == null ? "" : fmt(v);
@@ -1094,6 +1112,12 @@ button { cursor: pointer; }
     $("b-add").disabled = !canAdd();
   }
   $("noteText").addEventListener("focus", () => {
+    const c = clipVid();
+    if (c) {   // writing on a clip: it stops where it is, and that is the note's time
+      if (!c.paused) c.pause();
+      if (S.stampEnd == null) S.stampT = c.currentTime || 0;
+      S.stampLocked = true; updateStamp(); return;
+    }
     if (entryOf(S.sel)?.kind !== "cut") return;
     if (!vid.paused) vid.pause();
     if (S.stampEnd == null && !S.region) S.stampT = vid.currentTime || 0;  // keep a range or region set up before typing
@@ -1108,13 +1132,13 @@ button { cursor: pointer; }
   const leaveTimes = () => { if (/^t(From|To)$/.test(document.activeElement?.id || "")) document.activeElement.blur(); };
   $("b-restamp").onclick = () => {
     leaveTimes();
-    S.stampT = nowT(); S.stampLocked = true;
+    S.stampT = stampNow(); S.stampLocked = true;
     if (S.stampEnd != null && S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
     updateStamp(); renderMarks();
   };
   $("b-end").onclick = () => {
-    leaveTimes(); vid.pause();
-    const t = nowT();
+    leaveTimes(); (clipVid() || vid).pause();
+    const t = stampNow();
     if (Math.abs(t - S.stampT) < 1 / FPS) S.stampEnd = null;
     else if (t < S.stampT) { S.stampEnd = S.stampT; S.stampT = t; }
     else S.stampEnd = t;
@@ -1126,7 +1150,7 @@ button { cursor: pointer; }
     const m = /^\s*(?:(\d+):)?(\d+(?:[.,]\d+)?)\s*$/.exec(v);
     return m ? (+(m[1] || 0)) * 60 + +m[2].replace(",", ".") : NaN;
   };
-  const clampT = (t) => Math.max(0, Math.min(t, dur()));
+  const clampT = (t) => Math.max(0, Math.min(t, stampDur()));
   for (const [id, end] of [["tFrom", false], ["tTo", true]]) {
     const inp = $(id);
     inp.addEventListener("change", () => {
@@ -1141,11 +1165,11 @@ button { cursor: pointer; }
       if (end) S.stampEnd = Math.abs(clampT(t) - S.stampT) < 1 / FPS ? null : clampT(t);
       else S.stampT = clampT(t);
       S.stampLocked = true; inp.blur();
-      seek(end && S.stampEnd != null ? S.stampEnd : S.stampT, true);
+      stampSeek(end && S.stampEnd != null ? S.stampEnd : S.stampT);
       updateStamp(); renderMarks();
     });
     inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); inp.dispatchEvent(new Event("change")); } });
-    inp.addEventListener("focus", () => { vid.pause(); S.stampLocked = true; inp.select(); });
+    inp.addEventListener("focus", () => { (clipVid() || vid).pause(); S.stampLocked = true; inp.select(); });
   }
   $("b-region").onclick = () => setDrawing(!S.drawing);
   $("b-unregion").onclick = () => { S.region = null; updateStamp(); renderRegions(); };
@@ -1176,11 +1200,11 @@ button { cursor: pointer; }
       const text = $("noteText").value.trim();
       const e = entryOf(S.sel);
       if (!text || !e) return;
-      const isSet = e.kind === "set";
+      const isSet = e.kind === "set", tm = timed();   // a cut, or a set's picked clip, unless Whole cut / Whole clip
       const row = {
         cut: e.key, text, status: "open", reply: "", by: S.me || null,
-        t: isSet || $("general").checked ? null : Math.round(S.stampT * 100) / 100,
-        tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
+        t: tm ? Math.round(S.stampT * 100) / 100 : null,
+        tEnd: tm && S.stampEnd != null ? Math.round(S.stampEnd * 100) / 100 : null,
         region: !S.region || (isSet && !curItem()) ? null : S.region,
         item: isSet ? ($("itemSel").value || null) : null,
         line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
@@ -1194,7 +1218,7 @@ button { cursor: pointer; }
       if (take) releaseTake(take);
       $("noteText").value = ""; S.stampLocked = false; S.stampEnd = null; S.region = null; $("general").checked = false;
       S.line = null; renderLineTarget(); renderScriptMarks();
-      S.stampT = vid.currentTime || 0;
+      S.stampT = stampNow();
       renderMarks(); renderRegions();
       $("composerHint").textContent = "Added. Ask Claude to apply your notes when you're done.";
     } finally { S.saving = false; updateStamp(); }
@@ -1427,7 +1451,10 @@ button { cursor: pointer; }
   }
   function focusNote(n) {
     S.focus = n.id;
-    if (n.t != null) seek(n.t, true); else vid.pause();
+    if (n.item && entryOf(S.sel)?.kind === "set") {   // a note on a set's clip: that clip goes to the note's time
+      const v = itemCards.get(n.item)?.vid;
+      if (v && n.t != null) { v.pause(); v.currentTime = Math.max(0, +n.t); }
+    } else if (n.t != null) seek(n.t, true); else vid.pause();
     for (const [id, x] of noteCards) x.card.classList.toggle("focus", id === n.id);
     if (n.item) itemCards.get(n.item)?.card.scrollIntoView({ block: "nearest", behavior: glide() });
     renderRegions();
@@ -1441,12 +1468,14 @@ button { cursor: pointer; }
     card.dataset.id = n.id;
     const top = el("div", "top");
     const span = n.t != null ? fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : "") : null;
-    const where = !isSet && n.line != null ? "Line " + (+n.line + 1) : span ?? (n.item || (isSet ? "Whole set" : "Whole cut"));
+    const where = isSet ? (n.item ? n.item + (span ? " · " + span : "") : "Whole set")
+      : n.line != null ? "Line " + (+n.line + 1) : span ?? "Whole cut";
     const boxed = !!reg(n.region);
     const lbl = (boxed ? "Box · " : "") + where;
     if (n.t != null || n.line != null || boxed) {
       const b = el("button", "t", lbl);
-      b.title = n.line != null ? "Show the line in the script" + (span ? " (" + span + ")" : "") : boxed ? (isSet ? "Show the box on the image" : "Show the box on the frame") : "Go to this frame";
+      b.title = n.line != null ? "Show the line in the script" + (span ? " (" + span + ")" : "") : boxed ? (isSet ? "Show the box on the image" : "Show the box on the frame")
+        : isSet ? "Go to this frame of the clip" : "Go to this frame";
       b.onclick = () => { focusNote(n); if (!isSet && n.line != null) showLine(+n.line); };
       top.append(b);
     } else top.append(el("span", "t", lbl));
@@ -1549,8 +1578,11 @@ button { cursor: pointer; }
         const o = el("option", null, it.name); o.value = it.name; sel.append(o);
         const card = el("div", "item"); card.dataset.item = it.name;
         const media = el("div", "media"); media.style.aspectRatio = w + " / " + h;
-        let i = null, rg = null;
-        if (it.kind === "clip") { const v = el("video"); v.src = it.url; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.controls = true; media.append(v); }
+        let i = null, rg = null, v = null;
+        if (it.kind === "clip") {
+          v = el("video"); v.src = it.url; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.controls = true; media.append(v);
+          for (const type of ["timeupdate", "seeked", "pause"]) v.addEventListener(type, () => clipFollow(v));
+        }
         else {
           i = el("img"); i.src = it.url; i.alt = it.name; i.loading = "lazy"; i.decoding = "async"; i.draggable = false;
           i.addEventListener("load", () => renderRegions());
@@ -1572,7 +1604,7 @@ button { cursor: pointer; }
           pickItem(S.item === it.name ? null : it.name);
         };
         box.append(card);
-        itemCards.set(it.name, { card, count, media, img: i, rg });
+        itemCards.set(it.name, { card, count, media, img: i, rg, vid: v });
       }
     }
     for (const [name, x] of itemCards) {
@@ -1590,8 +1622,13 @@ button { cursor: pointer; }
   // starting on one)
   function pickItem(name) {
     name = name || null;
-    if (name !== S.item) { S.region = null; if (S.drawing) setDrawing(false); }
+    const moved = name !== S.item;
+    if (moved) { S.region = null; if (S.drawing) setDrawing(false); }
     S.item = name; $("itemSel").value = name || "";
+    if (moved) {   // a new item starts with no time stamped: a clip's From follows that clip
+      S.stampEnd = null; S.stampLocked = false; $("general").checked = false; clearBadTimes();
+      S.stampT = clipVid()?.currentTime || 0;
+    }
     for (const [n, x] of itemCards) setAttr(x.card, "aria-current", String(n === name));
     updateStamp(); renderRegions();
   }

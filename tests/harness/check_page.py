@@ -73,6 +73,23 @@ with sync_playwright() as p:
     pg.locator(".item img").nth(1).click(); pg.wait_for_timeout(100)   # and unpick
     check("tapping it again: whole set", J("document.getElementById('itemSel').value") == "")
     pg.locator("#noteText").fill("")
+    # 13: a picked clip item takes a time or range from its own video; the note seeks that clip
+    clipName = J("document.querySelector('.item video').closest('.item').dataset.item")
+    C = f"document.querySelector('.item[data-item=\"{clipName}\"] video')"
+    seekClip = lambda t: J(f"(async () => {{ const v = {C}; v.pause(); v.currentTime = {t}; await new Promise(r => v.addEventListener('seeked', r, {{once: true}})); }})()")
+    check("#13 whole set: no From/To", J("document.getElementById('timeRow').hidden"))
+    pg.locator(f'.item[data-item="{clipName}"] .cap .mono').click(); pg.wait_for_timeout(200)
+    seekClip(1); pg.wait_for_timeout(200)
+    check("#13 picked clip: From follows it", not J("document.getElementById('timeRow').hidden") and J("document.getElementById('tFrom').value") == "0:01.0")
+    pg.locator("#b-restamp").click(); seekClip(2); pg.locator("#b-end").click(); pg.wait_for_timeout(100)
+    pg.locator("#noteText").fill("Clip cuts too early"); pg.keyboard.press("Enter"); pg.wait_for_timeout(600)
+    n = [x for x in store("notes") if x["text"] == "Clip cuts too early"]
+    check("#13 range note on the clip", len(n) == 1 and n[0]["item"] == clipName and n[0]["t"] == 1 and n[0]["tEnd"] == 2)
+    seekClip(0); lbl = pg.locator(".note .top .t").filter(has_text=clipName + " · 0:01.0–0:02.0")
+    lbl.click(); pg.wait_for_timeout(300)
+    check("#13 the note's time seeks its clip", lbl.count() == 1 and abs(J(f"{C}.currentTime") - 1) < 0.05)
+    J("document.activeElement.blur()"); pg.locator(f'.item[data-item="{clipName}"] .cap .mono').click(); pg.wait_for_timeout(100)
+    check("#13 unpicked: whole set again", J("document.getElementById('itemSel').value") == "" and J("document.getElementById('timeRow').hidden"))
     # 9: unknown hash on a hash change
     J("location.hash = '#nonexistent'"); pg.wait_for_timeout(300)
     check("#9 unknown hash: corrected and explained", J("location.hash") == "#carousel" and "nonexistent" in J("document.getElementById('status').textContent"))

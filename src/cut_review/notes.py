@@ -94,12 +94,12 @@ def take_of(note: dict) -> dict | None:
 
 def where(note: dict) -> str:
     """Where a note points: set item, time range, time or whole cut, plus its frame region and script line."""
-    if note.get("item"):
-        at = note["item"]
-    elif note.get("t") is not None and note.get("tEnd") is not None:
+    if note.get("t") is not None and note.get("tEnd") is not None:
         at = f"{fmt_t(note['t'])}–{fmt_t(note['tEnd'])}"
     else:
         at = fmt_t(note.get("t"))
+    if note.get("item"):   # a set item; a clip item may have a time or range too ("02-clip @ 0:01.0–0:02.5")
+        at = note["item"] + (f" @ {at}" if note.get("t") is not None else "")
     r = region_of(note)
     if r:
         at += " [region x {:.0%} y {:.0%}, {:.0%}×{:.0%}]".format(*r)
@@ -218,19 +218,51 @@ def _safe(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", str(name)).strip("-") or "item"
 
 
-def extract_frames(room: Room, notes: list[dict], width: int = 540) -> list[tuple[dict, Path]]:
-    """The frames behind every open note on a cut, and the stills behind open set-item notes with a region, as PNGs
-    in .cut-review/frames/. Needs ffmpeg.
+def _shots(n: dict) -> list[tuple[float, str]]:
+    """The times to grab for a timed note: its frame, or the first and last frame of its range."""
+    t = float(n.get("t") or 0)
+    if n.get("tEnd") is not None and float(n["tEnd"]) > t:
+        return [(t, "_start"), (float(n["tEnd"]), "_end")]
+    return [(t, "")]
+
+
+def _grab(video: Path, at: float, r, width: int, dst: Path) -> None:
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(video),
+                    "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
+
+
+def _set_clip(room: Room, sets: dict[str, list[dict]], n: dict) -> tuple[Path | None, str]:
+    """The local clip file behind a timed note on a set item, or None and why there is no frame to take."""
+    item = n.get("item")
+    if not item:
+        return None, "a timed note on the whole set has no clip to take a frame from"
+    it = next((x for x in sets[n["cut"]] if x["name"] == item), None)
+    if it is None:
+        return None, f"item {item} is not in set {n['cut']} in room.json"
+    if kind_of(it["file"]) != "clip":
+        return None, f"item {item} is a still, so a time on it has no frame"
+    f = room.abspath(it["file"])
+    if not f.is_file():
+        return None, f"clip {it['file']} is not on disk"
+    return f, ""
+
+
+def extract_frames(room: Room, notes: list[dict], width: int = 540,
+                   skipped: list[tuple[dict, str]] | None = None) -> list[tuple[dict, Path]]:
+    """The frames behind every open note on a cut or on a set's clip, and the stills behind open set-item notes
+    with a region, as PNGs in .cut-review/frames/. Needs ffmpeg.
 
     A timed note gives its frame; a range note gives its first and last frame; a note with a region has the region
     boxed in red (a whole-cut note with a region uses the first frame). A region on a set's still is boxed on that
-    image (a set note without a region, or on a clip item, gives nothing: the file is the item itself).
+    image (a set note without a region or a time gives nothing: the file is the item itself). A timed note on a
+    set's clip item gives that clip's frame(s) when the clip is a local file in room.json; otherwise it is appended
+    to `skipped` as (note, reason).
     """
     if not shutil.which("ffmpeg"):
         raise RoomError("ffmpeg is not on PATH")
     files = {c["key"]: room.abspath(c["file"]) for c in room.manifest.get("cuts", [])}
-    stills = {(s["key"], it["name"]): room.abspath(it["file"])
-              for s in room.manifest.get("sets", []) for it in set_items(room, s) if kind_of(it["file"]) == "still"}
+    sets = {s["key"]: set_items(room, s) for s in room.manifest.get("sets", [])}
+    stills = {(k, it["name"]): room.abspath(it["file"]) for k, items in sets.items() for it in items if kind_of(it["file"]) == "still"}
     outdir = room.state_dir / "frames"
     outdir.mkdir(parents=True, exist_ok=True)
     done = []
@@ -238,22 +270,30 @@ def extract_frames(room: Room, notes: list[dict], width: int = 540) -> list[tupl
         r = region_of(n)
         if n.get("status") != "open":
             continue
-        if n.get("item") and r and (n["cut"], n["item"]) in stills:
-            dst = outdir / f"{n['cut']}_{_safe(n['item'])}_{n['id']}.png"
-            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(stills[n["cut"], n["item"]]),
-                            "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
-            done.append((n, dst))
+        if n["cut"] in sets:
+            if n.get("item") and r and (n["cut"], n["item"]) in stills:
+                dst = outdir / f"{n['cut']}_{_safe(n['item'])}_{n['id']}.png"
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(stills[n["cut"], n["item"]]),
+                                "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
+                done.append((n, dst))
+                continue
+            if n.get("t") is None:
+                continue
+            clip, why = _set_clip(room, sets, n)
+            if clip is None:
+                if skipped is not None:
+                    skipped.append((n, why))
+                continue
+            for at, suffix in _shots(n):
+                dst = outdir / f"{n['cut']}_{_safe(n['item'])}_{at:07.2f}_{n['id']}{suffix}.png"
+                _grab(clip, at, r, width, dst)
+                done.append((n, dst))
             continue
         if n["cut"] not in files or (n.get("t") is None and not r):
             continue
-        t = float(n.get("t") or 0)
-        shots = [(t, "")]
-        if n.get("tEnd") is not None and float(n["tEnd"]) > t:
-            shots = [(t, "_start"), (float(n["tEnd"]), "_end")]
-        for at, suffix in shots:
+        for at, suffix in _shots(n):
             dst = outdir / f"{n['cut']}_{at:07.2f}_{n['id']}{suffix}.png"
-            subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(files[n["cut"]]),
-                            "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
+            _grab(files[n["cut"]], at, r, width, dst)
             done.append((n, dst))
     return done
 
