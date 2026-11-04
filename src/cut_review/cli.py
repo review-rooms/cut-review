@@ -26,7 +26,11 @@ UPLOAD_MAX_BYTES = 15 << 20  # and at most 15 MB per binary file
 
 
 def _read(src: str) -> str:
-    return sys.stdin.read() if src == "-" else Path(src).read_text()
+    if src == "-":
+        return sys.stdin.read()
+    if not Path(src).is_file():
+        raise RoomError(f"no such file or folder: {src}")
+    return Path(src).read_text()
 
 
 def _print_batches(writes: list[dict], what: str) -> None:

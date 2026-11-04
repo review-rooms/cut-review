@@ -920,3 +920,12 @@ def test_page_times_notes_on_a_picked_set_clip(room_dir, capsys):
     assert 'n.item + (span ? " · " + span : "")' in html                             # and shows its time
     assert "if (!S.item && !S.stampLocked && S.stampEnd == null)" in html            # paint() leaves a clip's stamp alone
     assert "innerHTML" not in html
+
+
+# ---------------------------------------------------------------- a missing input file is a one-line error
+
+@pytest.mark.parametrize("args", [["assets"], ["written"], ["fix", "--from"]])
+def test_missing_input_file_is_a_one_line_error(room_dir, capsys, args):
+    missing = room_dir / "nope.txt"
+    assert run(room_dir, *args, str(missing)) == 1
+    assert f"no such file or folder: {missing}" in capsys.readouterr().err

@@ -98,7 +98,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 
 A command that fails prints one line, `cut-review: <reason>`, to stderr and exits 1, never a traceback; that includes
 input or state that is not valid JSON or not the expected shape (an upload result, a `fix --from` file, `.cut-review/state.json`,
-`.cut-review/notes.json`), named with where it breaks.
+`.cut-review/notes.json`), named with where it breaks, and an input file that doesn't exist (`no such file or folder: …`).
 
 ### 2b. The local recorder (`recorder/`, experimental)
 
