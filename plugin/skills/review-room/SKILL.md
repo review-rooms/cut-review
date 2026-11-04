@@ -52,7 +52,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    `url` = the room). Save the result to a file and run `cut-review written <file>`.
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
    frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; fill To (next to From) in the note form,
-   or drag the timeline, for a note on a time range, and dragging on the picture (or "Box", `r`) to box the part of the frame a note is about.
+   or drag in the thin notes lane just above the timeline, for a note on a time range (dragging the timeline itself scrubs the video), and dragging on the picture (or "Box", `r`) to box the part of the frame a note is about.
    In a set, tap an item to pick it (a clip's picture too; tap again, on a clip its caption, or "Whole set", for a note on the whole set; arrow keys move the pick);
    dragging on a still image (or "Box", `r`, for the picked item) boxes part of that image; a picked clip item takes
    a time or range from its own video, like a cut (From/To, In/Out, `i` `o`; "Whole clip" for none).

@@ -796,6 +796,19 @@ def test_page_drags_apply_once_per_frame(room_dir, capsys):
     assert "const scrubSoon = perFrame(" in html and "const draftSoon = perFrame(renderDraft)" in html
 
 
+def test_page_track_scrubs_and_lane_marks_ranges(room_dir, capsys):
+    html = page_html(room_dir)
+    # a thin notes lane right above the timeline, with its own label, holds the marks and the range being marked
+    lane = html.index('<div class="lane" id="lane"')
+    assert lane < html.index('<div class="track" id="track"') and 'aria-label="Note marks: drag to mark a range for a note"' in html
+    assert '$("lane").append(frag)' in html and '$("lane").append(selBox)' in html and '$("track").append(' not in html
+    drag = html[html.index("// the timeline scrubs"):html.index('document.addEventListener("keydown"')]
+    # only a drag in the lane (never on a past version) stamps the note; the track only seeks, paused while held
+    assert drag.count("markRange(") == 2 and drag.count("S.stampT =") == 1                 # one place stamps, called twice
+    assert "if (d.lane) markRange(a, b);" in drag and "if (d.lane && d.moved) {\n        markRange(" in drag
+    assert 'lane: el === $("lane") && !S.viewV' in drag and "vid.play()" in drag
+
+
 def test_page_touch_targets_and_contract(room_dir, capsys):
     html = page_html(room_dir)
     assert "@media (pointer: coarse), (max-width: 760px) {\n  :root { --hit: 44px; }" in html and ".note button.t, .note .acts .btn { min-height: var(--hit); }" in html   # issue 10

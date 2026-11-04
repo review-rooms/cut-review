@@ -105,14 +105,37 @@ with sync_playwright() as p:
     check("playhead moved by transform while playing", tf not in ("none", "matrix(1, 0, 0, 1, 0, 0)"))
     check("script line lit while playing", pg.locator("#script .sline.now").count() == 1)
     check("time and '/ length · f frame' shown", J("document.getElementById('tc').textContent").startswith("0:0") and " · f " in J("document.getElementById('fr').textContent"))
-    # scrub a range
+    # the timeline scrubs (paused while held, playing again after), and never touches the note's time
     pg.locator("#track").scroll_into_view_if_needed()
     bb = pg.locator("#track").bounding_box(); y = bb["y"] + bb["height"] / 2
+    lb = pg.locator("#lane").bounding_box()
+    check(f"the notes lane sits right above the timeline, as wide ({lb})", abs(lb["y"] + lb["height"] - bb["y"]) < 1.5
+          and abs(lb["x"] - bb["x"]) < 1 and abs(lb["width"] - bb["width"]) < 1 and J("document.getElementById('lane').getAttribute('aria-label')"))
+    if W <= 760:
+        check("phone: the lane and timeline span the transport, first", J("document.querySelector('.tl').getBoundingClientRect().width") >= J("document.querySelector('.controls').getBoundingClientRect().width") - 1
+              and lb["y"] < pg.locator("#b-play").bounding_box()["y"])
+    check("no horizontal scroll", J("document.documentElement.scrollWidth <= window.innerWidth"))
+    pg.locator("#b-restamp").click(); pg.wait_for_timeout(100)
+    fr0 = J("document.getElementById('tFrom').value")
+    J("document.getElementById('vid').play()"); pg.wait_for_timeout(300)
+    pg.locator("#track").scroll_into_view_if_needed(); bb = pg.locator("#track").bounding_box(); y = bb["y"] + bb["height"] / 2
     pg.mouse.move(bb["x"] + bb["width"] * .25, y); pg.mouse.down()
-    for i in range(20): pg.mouse.move(bb["x"] + bb["width"] * (.25 + .25 * i / 19), y)
+    for i in range(20): pg.mouse.move(bb["x"] + bb["width"] * (.25 + .5 * i / 19), y); pg.wait_for_timeout(15)
+    pg.wait_for_timeout(300)
+    mid, held = J("[document.getElementById('vid').currentTime / document.getElementById('vid').duration, document.getElementById('vid').paused]")
+    pg.mouse.up(); pg.wait_for_timeout(300)
+    check(f"dragging the timeline scrubs, paused while held ({mid:.2f})", abs(mid - .75) < .03 and held)
+    check("and plays on after the release, as it was", not J("document.getElementById('vid').paused"))
+    J("document.getElementById('vid').pause()"); pg.wait_for_timeout(200)
+    check(f"scrubbing leaves the note's time alone ({fr0})", J("document.getElementById('tFrom').value") == fr0 and J("document.getElementById('tTo').value") == ""
+          and pg.locator("#lane .sel").count() == 0)
+    # the lane marks a range
+    pg.locator("#lane").scroll_into_view_if_needed(); lb = pg.locator("#lane").bounding_box(); ly = lb["y"] + lb["height"] / 2
+    pg.mouse.move(lb["x"] + lb["width"] * .25, ly); pg.mouse.down()
+    for i in range(20): pg.mouse.move(lb["x"] + lb["width"] * (.25 + .25 * i / 19), ly)
     pg.mouse.up(); pg.wait_for_timeout(400)
     fr, to = J("[document.getElementById('tFrom').value, document.getElementById('tTo').value]")
-    check(f"scrub marks a range ({fr}–{to})", fr.startswith("0:02") and to.startswith("0:04") and pg.locator("#track .sel").count() == 1)
+    check(f"dragging the lane marks a range ({fr}–{to})", fr.startswith("0:02") and to.startswith("0:04") and pg.locator("#lane .sel").count() == 1)
     # 7: an invalid time blocks Add and says why
     pg.locator("#noteText").fill("Hold the logo")
     pg.locator("#tFrom").fill("abc"); pg.keyboard.press("Tab"); pg.wait_for_timeout(100)
@@ -132,7 +155,21 @@ with sync_playwright() as p:
     pg.locator("#b-add").click(); pg.wait_for_timeout(600)
     n = [x for x in store("notes") if x["cut"] == "teaser"]
     check("note saved with range and region", len(n) == 1 and n[0]["t"] == 1.5 and n[0]["tEnd"] is not None and n[0]["region"] and n[0]["region"]["w"] > .2)
-    check("note card and timeline mark shown", pg.locator("#notes .note").count() == 1 and pg.locator("#track .mark").count() == 1)
+    check("note card and timeline mark shown", pg.locator("#notes .note").count() == 1 and pg.locator("#lane .mark").count() == 1)
+    J("document.getElementById('vid').currentTime = 6"); pg.wait_for_timeout(300)
+    pg.locator("#lane .mark").click(); pg.wait_for_timeout(300)
+    check("clicking a mark focuses its note", pg.locator("#notes .note.focus").count() == 1 and abs(J("document.getElementById('vid').currentTime") - 1.5) < 0.05)
+    J("document.getElementById('vid').currentTime = 6"); pg.wait_for_timeout(300)
+    pg.locator("#lane").click(position={"x": lb["width"] * .9, "y": lb["height"] / 2}); pg.wait_for_timeout(300)
+    check("a click on empty lane space seeks there", abs(J("document.getElementById('vid').currentTime / document.getElementById('vid').duration") - .9) < .03)
+    # a lane drag saves a note with t and tEnd
+    pg.locator("#lane").scroll_into_view_if_needed(); lb = pg.locator("#lane").bounding_box(); ly = lb["y"] + lb["height"] / 2
+    pg.mouse.move(lb["x"] + lb["width"] * .6, ly); pg.mouse.down()   # clear of the first note's mark and its hit area
+    for i in range(20): pg.mouse.move(lb["x"] + lb["width"] * (.6 + .25 * i / 19), ly)
+    pg.mouse.up(); pg.wait_for_timeout(300)
+    pg.locator("#noteText").fill("Too long here"); pg.keyboard.press("Enter"); pg.wait_for_timeout(600)
+    n = [x for x in store("notes") if x["text"] == "Too long here"]
+    check(f"a lane range saves a note with t and tEnd ({n and (n[0]['t'], n[0]['tEnd'])})", len(n) == 1 and 4.6 < n[0]["t"] < 5 and 6.6 < n[0]["tEnd"] < 7)
     # 8: a cue is spaced from the word before it
     check("#8 cue has a space before it", " pause answer" in J("document.querySelector('#script .sline .say').textContent"))
     # 5: Comment keeps the words picked on the line
@@ -210,13 +247,19 @@ with sync_playwright() as p:
     check("v2: its video plays", J("document.getElementById('vid').dataset.src === window.__old && document.getElementById('vid').getAttribute('src') === window.__old"))
     check("v2: no sound switch, its own script", J("document.getElementById('versions').hidden") and J("document.querySelector('#script .sline .say').textContent") == "An older line")
     check("v2: only v2's notes, resolved too, with Claude's reply", J("[...document.querySelectorAll('#notes .note .body')].map((b) => b.textContent)") == ["Logo too small"]
-          and pg.locator("#notes .note .reply").count() == 1 and pg.locator("#notes .note .acts").count() == 0 and pg.locator("#track .mark").count() == 1)
+          and pg.locator("#notes .note .reply").count() == 1 and pg.locator("#notes .note .acts").count() == 0 and pg.locator("#lane .mark").count() == 1)
     check("v2: read-only banner, no note form, no verdict", J("document.getElementById('pastTxt').textContent") == "Viewing v2, read-only"
           and pg.locator("#b-current").is_visible() and not pg.locator("#composer").is_visible() and not pg.locator("#verdict").is_visible()
           and not pg.locator("#script .lbtn").first.is_visible())
     check("v2: the address names the version", J("location.hash") == "#explainer@v2")
     J("document.activeElement.blur()"); pg.keyboard.press("n"); pg.keyboard.press("i"); pg.wait_for_timeout(100)
     check("v2: n and i start nothing", J("document.activeElement.id") != "noteText" and J("document.getElementById('tFrom').value") in ("", "0:00.0"))
+    pg.locator("#lane").scroll_into_view_if_needed(); lb = pg.locator("#lane").bounding_box(); ly = lb["y"] + lb["height"] / 2
+    pg.mouse.move(lb["x"] + lb["width"] * .4, ly); pg.mouse.down()
+    for i in range(20): pg.mouse.move(lb["x"] + lb["width"] * (.4 + .4 * i / 19), ly)
+    pg.mouse.up(); pg.wait_for_timeout(400)
+    check("v2: the lane marks no range, it scrubs", pg.locator("#lane .sel").count() == 0
+          and abs(J("document.getElementById('vid').currentTime / document.getElementById('vid').duration") - .8) < .03)
     pg.locator("#script .sline .w").first.click(); pg.wait_for_timeout(200)
     check("v2: tapping a word opens no note form", J("document.getElementById('composer').parentNode.id") == "dock" and J("document.getElementById('lineTarget').hidden"))
     pg.locator("#b-current").click(); pg.wait_for_timeout(500)
@@ -267,6 +310,12 @@ with sync_playwright() as p:
     pg.mouse.click(bb["x"] + bb["width"] * .5, bb["y"] + bb["height"] / 2); pg.wait_for_timeout(600)
     t1, t2 = J(f"[{V}.currentTime, {V2}.currentTime]")
     check(f"a seek on the timeline moves both ({t1:.2f}, {t2:.2f})", 5 < t1 < 7 and abs(t1 - t2) < 0.1)
+    y = bb["y"] + bb["height"] / 2; pg.mouse.move(bb["x"] + bb["width"] * .5, y); pg.mouse.down()
+    for i in range(20): pg.mouse.move(bb["x"] + bb["width"] * (.5 - .3 * i / 19), y); pg.wait_for_timeout(15)
+    pg.wait_for_timeout(400); m1, m2 = J(f"[{V}.currentTime, {V2}.currentTime]")
+    pg.mouse.up(); pg.wait_for_timeout(600)
+    t1, t2 = J(f"[{V}.currentTime, {V2}.currentTime]")
+    check(f"a drag on the timeline moves both, while held ({m1:.2f}, {m2:.2f}) and after ({t1:.2f}, {t2:.2f})", abs(t1 / J(f"{V}.duration") - .2) < .03 and abs(t1 - t2) < 0.1 and abs(m1 - m2) < 0.1)
     J("document.activeElement.blur()")
     for _ in range(3): pg.keyboard.press("."); pg.wait_for_timeout(150)
     pg.locator("#b-back").click(); pg.wait_for_timeout(400)

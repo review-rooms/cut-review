@@ -154,18 +154,22 @@ button { cursor: pointer; }
 .rates { display: inline-flex; }
 .rates button { font: 500 12px var(--mono); padding: 6px 7px; }
 .rates button[aria-pressed="true"] { background: var(--sunk); color: var(--ink); }
-.track { position: relative; flex: 1; min-width: 140px; height: 28px; margin: 0 8px; cursor: pointer; touch-action: none; contain: layout style; }
+.tl { flex: 1; min-width: 140px; margin: 0 8px; display: flex; flex-direction: column; }
+.track { position: relative; height: 28px; cursor: pointer; touch-action: none; contain: layout style; }
+/* the notes lane above the timeline: its marks, the range being marked, and a drag there marks a range */
+.lane { position: relative; height: 12px; cursor: crosshair; touch-action: none; contain: layout style; border-radius: 3px; }
+.lane:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .track .rail, .track .fill { position: absolute; left: 0; top: 12px; height: 4px; border-radius: 2px; pointer-events: none; }
 .track .rail { right: 0; background: var(--line); }
 /* the fill and the playhead move by transform only (paint() in the script), once per video frame */
 .track .fill { right: 0; background: var(--ink); transform-origin: 0 50%; transform: scaleX(0); will-change: transform; }
 .track .head-line { position: absolute; left: 0; top: 8px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--panel); border: 2px solid var(--ink); pointer-events: none; z-index: 2; will-change: transform; }
-.track .sel { position: absolute; top: 8px; height: 12px; border: 1.5px solid var(--open); border-radius: 4px; background: color-mix(in srgb, var(--open) 18%, transparent); pointer-events: none; }
-.mark { --c: var(--open); position: absolute; top: 0; width: 12px; height: 12px; margin-left: -6px; border: 0; padding: 0; background: none; }
-.mark::before { content: ""; position: absolute; left: 5px; top: 0; width: 2px; height: 8px; border-radius: 1px; background: var(--c); }
+.lane .sel { position: absolute; bottom: 0; height: 12px; box-sizing: border-box; border: 1.5px solid var(--open); border-radius: 4px; background: color-mix(in srgb, var(--open) 18%, transparent); pointer-events: none; }
+.mark { --c: var(--open); position: absolute; bottom: 0; width: 12px; height: 12px; margin-left: -6px; border: 0; padding: 0; background: none; }
+.mark::before { content: ""; position: absolute; left: 5px; top: 2px; width: 2px; height: 10px; border-radius: 1px; background: var(--c); }
 .mark.fixed { --c: var(--fixed-dot); }
 .mark.resolved, .mark.wontfix { --c: var(--faint); opacity: 0.6; }
-.mark.range { top: 9px; height: 10px; min-width: 6px; margin-left: 0; }
+.mark.range { bottom: 1px; height: 10px; min-width: 6px; margin-left: 0; }
 .mark.range::before { left: 0; right: 0; top: 2px; width: auto; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--c) 40%, transparent); }
 
 .strip { flex: 0 0 38%; min-height: 170px; display: flex; flex-direction: column; margin: 0 -24px; border-top: 1px solid var(--line2); background: var(--strip); }
@@ -317,7 +321,7 @@ button { cursor: pointer; }
   .cutbtn { width: auto; flex: 0 0 auto; white-space: nowrap; border: 1px solid var(--line); }
   .cutbtn .nm { overflow: visible; }
   .main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); }
-  .track { order: -1; flex-basis: 100%; margin: 0; }
+  .tl { order: -1; flex-basis: 100%; margin: 0; }
   .pair { flex-direction: column; }
   .pic { flex: none; }   /* stacked, the pair has no height to share */
   .strip { margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))); max-height: 60vh; }
@@ -340,13 +344,12 @@ button { cursor: pointer; }
   .sline .tbtn, .lc .lbtn { min-height: var(--hit); }
   .take audio, .note audio { height: var(--hit); }
   .log summary { line-height: calc(var(--hit) - 8px); }
-  /* the timeline: a 44 px band to press on, the rail where it was; marks get a larger invisible hit area */
-  .track { height: var(--hit); }
+  /* the timeline and the lane above it: 44 px bands to press on, the rail where it was; marks sit at the lane's
+     foot and get a larger invisible hit area that stays inside the lane */
+  .track, .lane { height: var(--hit); }
   .track .rail, .track .fill { top: 20px; }
-  .track .head-line, .track .sel { top: 16px; }
-  .mark { top: 8px; }
-  .mark.range { top: 17px; }
-  .mark::after { content: ""; position: absolute; inset: -16px; }
+  .track .head-line { top: 16px; }
+  .mark::after { content: ""; position: absolute; inset: -30px -16px 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 </style>
@@ -402,7 +405,8 @@ button { cursor: pointer; }
           <button class="step" id="b-back" title="Back one frame (,)" aria-label="Back one frame">‹</button>
           <button class="step" id="b-fwd" title="Forward one frame (.)" aria-label="Forward one frame">›</button>
           <span class="tc mono" id="tc">0:00.0</span><span class="fr mono" id="fr"></span>
-          <div class="track" id="track" aria-label="Notes on the timeline"><div class="rail"></div><div class="fill" id="fill"></div><div class="head-line" id="playhead"></div></div>
+          <div class="tl"><div class="lane" id="lane" role="group" aria-label="Note marks: drag to mark a range for a note" title="Drag to mark a range for a note"></div>
+          <div class="track" id="track" aria-label="Timeline: drag to scrub"><div class="rail"></div><div class="fill" id="fill"></div><div class="head-line" id="playhead"></div></div></div>
           <span class="rates"><button data-rate="0.5" aria-pressed="false">0.5×</button><button data-rate="1" aria-pressed="true">1×</button></span>
           <button class="txt" id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
           <button class="txt" id="b-dl" title="Download this video" hidden>Download</button>
@@ -1087,36 +1091,44 @@ button { cursor: pointer; }
     vid.playbackRate = +b.dataset.rate;
     document.querySelectorAll("[data-rate]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   };
-  // dragging the timeline marks a range; the moves are applied once per frame, against the box read at the press
+  // the timeline scrubs: press, drag and release seek, paused while held and playing again after if it was. The lane
+  // above it marks a range for a note instead (not on a past version, where it scrubs). The moves are applied once
+  // per frame, against the box read at the press.
   let drag = null;
   const tAt = (x, r) => Math.max(0, Math.min(1, (x - r.left) / r.width)) * dur();
+  const markRange = (a, b) => { S.stampT = Math.min(a, b); S.stampEnd = Math.max(a, b); S.stampLocked = true; $("general").checked = false; };
   const scrubSoon = perFrame(() => {
-    if (!drag || !drag.moved) return;
-    const a = tAt(drag.x, drag.rect), b = tAt(drag.cx, drag.rect);
-    S.stampT = Math.min(a, b); S.stampEnd = Math.max(a, b); S.stampLocked = true; $("general").checked = false;
-    seek(b, true); updateStamp(); renderSel();
+    const d = drag;
+    if (!d || (d.lane && !d.moved)) return;
+    const a = tAt(d.x, d.rect), b = tAt(d.cx, d.rect);
+    if (d.lane) markRange(a, b);
+    seek(b, true);
+    if (d.lane) { updateStamp(); renderSel(); }
   });
-  $("track").addEventListener("pointerdown", (ev) => {
-    if (ev.target.classList.contains("mark") || ev.button > 0) return;
-    drag = { x: ev.clientX, cx: ev.clientX, moved: false, rect: $("track").getBoundingClientRect() };
-    $("track").setPointerCapture(ev.pointerId);
-  });
-  $("track").addEventListener("pointermove", (ev) => {
-    if (!drag || (!drag.moved && Math.abs(ev.clientX - drag.x) < 5)) return;
-    drag.moved = true; drag.cx = ev.clientX;
-    scrubSoon();
-  });
-  const endDrag = (ev) => {
-    if (!drag) return;
-    const d = drag; drag = null;
-    if (!d.moved) { seek(tAt(ev.clientX, d.rect), true); return; }
-    const a = tAt(d.x, d.rect), b = tAt(ev.clientX, d.rect);
-    S.stampT = Math.min(a, b); S.stampEnd = Math.max(a, b); S.stampLocked = true; $("general").checked = false;
-    if (S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
-    seek(S.stampT, true); updateStamp(); renderSel();
-  };
-  $("track").addEventListener("pointerup", endDrag);
-  $("track").addEventListener("pointercancel", () => { drag = null; });
+  for (const el of [$("track"), $("lane")]) {
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.target.classList.contains("mark") || ev.button > 0) return;
+      drag = { x: ev.clientX, cx: ev.clientX, moved: false, rect: el.getBoundingClientRect(), lane: el === $("lane") && !S.viewV, play: !vid.paused };
+      el.setPointerCapture(ev.pointerId);
+      if (!drag.lane) scrubSoon();
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag || (!drag.moved && Math.abs(ev.clientX - drag.x) < 5)) return;
+      drag.moved = true; drag.cx = ev.clientX;
+      scrubSoon();
+    });
+    el.addEventListener("pointerup", (ev) => {
+      if (!drag) return;
+      const d = drag; drag = null;
+      if (d.lane && d.moved) {
+        markRange(tAt(d.x, d.rect), tAt(ev.clientX, d.rect));
+        if (S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
+        seek(S.stampT, true); updateStamp(); renderSel();
+      } else seek(tAt(ev.clientX, d.rect), true);
+      if (d.play && !d.lane) vid.play().catch(() => {});
+    });
+    el.addEventListener("pointercancel", () => { const d = drag; drag = null; if (d?.play && !d.lane) vid.play().catch(() => {}); });
+  }
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && S.drawing) { ev.preventDefault(); setDrawing(false); return; }
     const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || "");
@@ -1566,7 +1578,7 @@ button { cursor: pointer; }
   function renderSel() {
     const on = entryOf(S.sel)?.kind === "cut" && S.stampEnd != null && !$("general").checked;
     if (!on) { if (selBox) selBox.remove(); selBox = null; return; }
-    if (!selBox) { selBox = el("div", "sel"); $("track").append(selBox); }
+    if (!selBox) { selBox = el("div", "sel"); $("lane").append(selBox); }
     const d = dur();
     selBox.style.left = (100 * Math.min(S.stampT, d) / d) + "%";
     selBox.style.width = (100 * (Math.min(S.stampEnd, d) - Math.min(S.stampT, d)) / d) + "%";
@@ -1581,7 +1593,7 @@ button { cursor: pointer; }
     const key = d + "|" + list.map((n) => n.id + n.status + n.t + n.tEnd + n.text).join("|");
     if (key === marksKey) return;
     marksKey = key;
-    [...$("track").querySelectorAll(".mark")].forEach((m) => m.remove());
+    [...$("lane").querySelectorAll(".mark")].forEach((m) => m.remove());
     const frag = document.createDocumentFragment();
     for (const n of list) {
       const m = el("button", "mark " + n.status + (ranged(n) ? " range" : ""));
@@ -1593,7 +1605,7 @@ button { cursor: pointer; }
       m.onclick = () => focusNote(n);
       frag.append(m);
     }
-    $("track").append(frag);
+    $("lane").append(frag);
   }
   function focusNote(n) {
     S.focus = n.id;
