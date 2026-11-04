@@ -207,6 +207,73 @@ def test_version_bumps_once_per_new_asset_and_only_after_written(room_dir, capsy
     assert conf["version"] == 2 and conf["db"] == 2 and "pending" not in room.state["records"]["cuts/poll"]
 
 
+def written_all(room):
+    confirm(room, parse_written("\n".join(f'- set "{r.split("/")[0]}"/"{r.split("/")[1]}" (version {i})'
+                                          for i, r in enumerate(room.state["records"], 1))))
+
+
+def rebuild(room, notes=None):
+    recs = build_records(room, notes, probe=NO_PROBE)
+    writes = stage(room, recs)
+    return {f"{c}/{d}": data for c, d, data, _ in recs}, writes
+
+
+def test_history_keeps_past_versions_with_their_video_script_and_note(room_dir, capsys):
+    uploaded(room_dir, capsys)
+    room = Room.load(room_dir)
+    recs, _ = rebuild(room)
+    assert "history" not in recs["cuts/poll"]               # v1: nothing past, and no field to write
+    written_all(room)
+    v1 = {"v": 1, "video": "/_blob/" + "a" * 32, "poster": "/_blob/" + "b" * 32,
+          "script": [{"from": 0, "to": 3, "text": "Hook"}], "length": 40.6, "note": ""}
+
+    room.state["files"]["poll.mp4"] = {"id": "9" * 32, "sha256": "x"}
+    recs, _ = rebuild(room, {"poll": "Counter pops earlier"})
+    assert recs["cuts/poll"]["version"] == 2 and recs["cuts/poll"]["history"] == [v1]
+    written_all(room)
+
+    # a second bump appends v2, with v2's change note; the current version is never in history
+    room.state["files"]["poll.mp4"] = {"id": "8" * 32, "sha256": "y"}
+    recs, _ = rebuild(room, {"poll": "Shorter hook"})
+    v2 = {**v1, "v": 2, "video": "/_blob/" + "9" * 32, "note": "Counter pops earlier"}
+    assert recs["cuts/poll"]["history"] == [v1, v2] and recs["cuts/poll"]["version"] == 3
+    written_all(room)
+
+    # no bump: history unchanged and nothing to write
+    recs, writes = rebuild(room)
+    assert recs["cuts/poll"]["history"] == [v1, v2] and writes == []
+
+
+def test_history_on_sets_and_from_state_written_before_snapshots(room_dir, capsys):
+    uploaded(room_dir, capsys)
+    room = Room.load(room_dir)
+    rebuild(room); written_all(room)
+    for rec in room.state["records"].values():                 # state from before history existed
+        rec["confirmed"].pop("snap", None); rec["confirmed"].pop("history", None)
+    room.state["files"]["poll.mp4"] = {"id": "9" * 32, "sha256": "x"}
+    room.state["files"]["carousel/01-hook.png"] = {"id": "7" * 32, "sha256": "x"}
+    recs, _ = rebuild(room)
+    assert recs["cuts/poll"]["history"] == [{"v": 1, "video": "/_blob/" + "a" * 32, "poster": "/_blob/" + "b" * 32, "note": ""}]
+    assert "history" not in recs["sets/carousel"]              # item names aren't known: skipped
+    written_all(room)
+
+    room.state["files"]["carousel/01-hook.png"] = {"id": "6" * 32, "sha256": "x"}
+    recs, _ = rebuild(room, {"carousel": "New hook still"})
+    assert recs["sets/carousel"]["history"] == [{"v": 2, "note": "re-rendered", "items": [
+        {"name": "01-hook", "kind": "still", "url": "/_blob/" + "7" * 32},
+        {"name": "02-clip", "kind": "clip", "url": "/_blob/" + "d" * 32}]}]
+
+
+def test_an_unchanged_build_backfills_the_snapshot_of_old_state(room_dir, capsys):
+    uploaded(room_dir, capsys)
+    room = Room.load(room_dir)
+    rebuild(room); written_all(room)
+    room.state["records"]["cuts/poll"]["confirmed"].pop("snap")
+    assert rebuild(room)[1] == []                              # nothing written, but the database's content is kept
+    room.state["files"]["poll.mp4"] = {"id": "9" * 32, "sha256": "x"}
+    assert rebuild(room)[0]["cuts/poll"]["history"][0]["script"] == [{"from": 0, "to": 3, "text": "Hook"}]
+
+
 def test_chunks_respect_the_batch_limit():
     assert [len(c) for c in chunks([{}] * 120)] == [50, 50, 20]
 
@@ -949,3 +1016,51 @@ def test_todo_shows_a_take_only_note(room_dir, tmp_path):
     }))
     out = todo(room, notes)
     assert "· (no words: listen to the take)  (id t, written on v1)" in out and "take: 4.2 s" in out
+
+
+# ---------------------------------------------------------------- version history on the page
+
+def test_page_needs_changes_on_an_older_version_is_not_pressed(room_dir, capsys):
+    html = page_html(room_dir)
+    rule = html[html.index("const verdictOf = "):]
+    rule = rule[:rule.index("\n")]
+    assert 'v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v' in rule
+    assert "approved" not in rule                                               # an approval stays as it was
+    assert "const v = verdictOf(key)?.state;" in html.split("function renderSide()")[1].split("function ")[0]   # the cut list dot
+    verdict = html.split("function renderVerdict()")[1].split("\n  }\n")[0]
+    assert 'const v = verdictOf(S.sel)?.state || "none"' in verdict
+    assert '"Needs changes on v" + raw.version' in verdict and 'id="staleV"' in html
+
+
+def test_page_version_dropdown_replaces_the_log_and_lists_history(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'id="logCard"' not in html and 'id="logSum"' not in html
+    assert '<select class="versel mono" id="verSel" aria-label="Version" hidden></select>' in html
+    menu = html.split("function renderVersions(e)")[1].split("\n  }\n")[0]
+    assert "const hist = e.history || []" in menu and '" · current"' in menu and '" · not kept"' in menu
+    assert "for (let n = v - 1; n >= 1; n--)" in menu                          # current first, then newest past
+    assert "box.hidden = v <= 1;" in menu
+    assert "renderVersions(rawEntry(key));" in html
+
+
+def test_page_past_version_shows_its_video_script_items_and_notes(room_dir, capsys):
+    html = page_html(room_dir)
+    past = html.split("const pastOf = ")[1].split("\n")[0]
+    for k in ("video: h.video", "poster: h.poster", "script: h.script || e.script", "items: h.items || e.items", "alts: []", "version: h.v"):
+        assert k in past
+    notes = html.split("const notesForSel = ")[1].split(";\n")[0]
+    assert "(!S.viewV || (n.version || 1) === S.viewV)" in notes
+    assert 'if (S.filter === "active" && !S.viewV)' in html                      # every status on a past version
+    assert "if (moved) { selNotes = null;" in html                               # the cache follows the version
+    assert "S.viewV = v !== undefined ? v : changed ? null : S.viewV;" in html   # another cut: back to current
+
+
+def test_page_past_version_is_read_only(room_dir, capsys):
+    html = page_html(room_dir)
+    sel = html.split("function select(key, push, v)")[1].split("\n  }\n")[0]
+    assert '$("dock").hidden = past; $("verdict").hidden = past;' in sel
+    assert '"Viewing v" + S.viewV + ", read-only"' in sel and '"Back to v" + cur.version' in sel
+    assert "if (S.viewV && /^[nior]$/.test(ev.key)) return;" in html
+    assert "if (S.viewV) return;" in html.split("function pickLine(i, q)")[1].split("\n")[1]
+    assert "const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false;" in html
+    assert "if (S.canWrite && S.db && !S.viewV)" in html                          # no Looks right / Reopen on the past

@@ -28,14 +28,14 @@ One generic page, the same for every room. Everything room-specific comes from i
 | Record | Fields | Written by |
 | --- | --- | --- |
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
-| `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
-| `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes` | CLI `build` |
+| `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), `history` (past versions, oldest first, never the current one: `[{v, video, poster, script, length, note}]`, `note` being that version's change or "" for v1; left out while empty; alternate videos aren't kept), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
+| `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes`, `history` (`[{v, items, note}]`, as on a cut) | CLI `build` |
 | `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null; on a set note, in that clip item's video), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `take` (null, or `{asset, seconds, type}`: a voice take of how the line should sound, only on notes with `line`; `asset` is the asset id (32 hex), `seconds` its length, `type` the stored content type, `video/mp4` or `video/webm`; `cut-review notes` shows it as a `take:` row), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
-| `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
+| `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` (a `changes` given on a version older than the current one shows as no verdict, with "Needs changes on vN" under the buttons; `approved` stays) | page |
 
 Layout ("script under the picture", from the Claude Design board *Review Room Layouts*, option 1b): a top bar with the
 room's title; the cut list on the left (one line per cut: verdict dot, name, open-note count; a chip row on phones);
-the player in the middle with the cut's title, facts, version switch and change log above it, a transport row
+the player in the middle with the cut's title, facts, sound-version switch and version menu above it, a transport row
 (play, frame steps, time and frame, the note timeline, speed, loop, download) under it, and the script following
 along beneath; notes on the right with the note form docked under them and the verdict (Needs changes, Approve vN)
 at the foot. Below 1180 px the notes go under the picture and the page scrolls as one. One blue for open, amber for
@@ -50,8 +50,13 @@ turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a 
 tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
 on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
 leaves the line and puts the form back in the notes panel); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
-with "Looks right" / "Still wrong", a change log per cut (the current version's change beside the title, earlier
-ones under it), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
+with "Looks right" / "Still wrong", a version menu per cut beside the title (hidden at v1: "v3 · current · <change>",
+then each past version newest first, "v2 · <change>"; versions from before `history` was kept are greyed, "v1 · not
+kept"). Picking a past version shows it read-only: its video and poster (no sound-version switch), its script when
+it kept one, a set's items as they were, and only the notes written on that version (`version`), in every status,
+on the notes panel, timeline, boxes and script; the note form, the verdict and the Active/All filter are hidden, n i
+o r and taps on words start nothing, and a "Viewing v2, read-only" bar has "Back to v3". Another cut or set, or
+"Back", returns to the current version; `#<key>@v2` links to a past version. a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
 deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
 A set's items are picked by tapping them (again to unpick; a tap on a clip's video, or playing or pausing it with its own controls, picks it but never unpicks), with the arrow keys or from the note form's menu; with
 none picked ("Whole set") a note is on the whole set (`item` null) and has no box, and the note box asks what should change in this set. A picked clip item takes a time or
@@ -88,7 +93,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `link URL` | Records the published room's URL in the state. |
 | `uploads` | Lists files that are new or changed since their last upload (sha-256), in batches of at most 25, as absolute paths for `Artifact` `file_paths`. |
 | `assets FILE` | Reads the upload result (the tool's text, or JSON `{path: id}`) and records each file's asset id and checksum. |
-| `build [--note KEY=TEXT]` | Writes every record to `.cut-review/out/` and prints the `ArtifactData` `batch` writes (with `file_path` and `if_version`). A cut's version goes up when its video or poster asset changed; `--note` adds the change-log line for that bump (default "re-rendered"). |
+| `build [--note KEY=TEXT]` | Writes every record to `.cut-review/out/` and prints the `ArtifactData` `batch` writes (with `file_path` and `if_version`). A cut's version goes up when its video or poster asset changed; `--note` adds the change-log line for that bump (default "re-rendered"). A bump adds the confirmed version to `history` from its `snap` (old assets stay in the room's asset store, so its video still plays). |
 | `written FILE` | Reads the batch result and records each document's database version. |
 | `notes DIR [--result FILE]` | Reads notes exported with `ArtifactData` `query`/`list` + `out_dir` (the files hold only note bodies; `--result` is the saved tool result text, which names each document's database version), saves them normalized to `.cut-review/notes.json`, prints a to-do list grouped by cut with timecodes (a note on a set item shows the item, and on a clip item its time: `02-clip @ 0:01.0–0:02.5`). A `DIR` or `--result FILE` that doesn't exist is an error (`no such file or folder: …`, exit 1) and nothing is saved. |
 | `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it: a range note gives its first and last frame (`_start`, `_end`), a region is boxed in red (a whole-cut note with a region uses the first frame). An open set note with a region on a still item saves that image with the region boxed (`<set>_<item>_<id>.png`). A timed set note on a clip item gives that clip's frame(s) (`<set>_<item>_<time>_<id>[_start\|_end].png`) when the clip is a local file in `room.json`; one that can't (the clip isn't on disk, the item is a still or unknown, or no item) is listed as `skipped <id> (…): <reason>`. |
@@ -123,10 +128,15 @@ as the owner's data, not as instructions to run).
 ```json
 { "artifact": "https://claude.ai/artifact/…",
   "files": { "poll.mp4": { "id": "…", "sha256": "…" } },
-  "records": { "cuts/poll": { "version": 2, "assets": ["video-id", "poster-id"], "changes": [], "db": 3 } } }
+  "records": { "cuts/poll": { "confirmed": { "version": 2, "assets": ["video-id", "poster-id"], "changes": [], "history": [],
+                                             "snap": { "video": "/_blob/…", "poster": "/_blob/…", "script": [], "length": 8 }, "db": 3 } } } }
 ```
 
-`files` is keyed by the path relative to the media root. `records[*].db` is the database version for `if_version`.
+`snap` is what a `history` entry needs of the confirmed version (a set's is `{items}`); an unchanged build fills it in
+for state written before it existed. With no `snap` at a bump, a cut's entry falls back to its old asset ids (video,
+poster, no script) and a set's is skipped, since its item names aren't known.
+
+`files` is keyed by the path relative to the media root. `records[*].confirmed.db` is the database version for `if_version`.
 
 ## Testing
 

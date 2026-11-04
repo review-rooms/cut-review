@@ -178,6 +178,60 @@ with sync_playwright() as p:
     J("window.__audio = document.querySelector('#notes .note audio')")
     J("window.__db.doc('verdicts/teaser').set({state: 'changes', version: 1, at: 'y'})"); pg.wait_for_timeout(400)
     check("take player survives an unrelated write", J("!!window.__audio && window.__audio === document.querySelector('#notes .note audio')"))
+    ctx.close()
+
+    # version history: the explainer at v3, v2 kept (the teaser's video and a one-line script), v1 from before
+    # history was kept; a note on each of v2 and v3, and a "Needs changes" given on v2
+    ctx = b.new_context(viewport={"width": W, "height": H}); pg = ctx.new_page(); J = pg.evaluate
+    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(BASE + "#explainer"); pg.wait_for_function("document.getElementById('vid').readyState >= 1", timeout=30000)
+    J("""(async () => {
+      const s = window.__store, x = s.cuts.explainer, t = s.cuts.teaser;
+      window.__cur = x.video; window.__old = t.video;
+      const note = (id, version, status, text, t0) => window.__db.doc('notes/' + id).set({ cut: 'explainer', t: t0, tEnd: null, region: null,
+        item: null, line: null, quote: null, qStart: null, qEnd: null, text, status, reply: status === 'resolved' ? 'Done in v3.' : '',
+        version, by: 'u_reviewer', createdAt: '2026-11-0' + version + 'T10:00:00Z' });
+      await note('old', 2, 'resolved', 'Logo too small', 1);
+      await note('new', 3, 'open', 'Music too loud', 2);
+      await window.__db.doc('verdicts/explainer').set({ state: 'changes', version: 2, at: 'x' });
+      await window.__db.doc('cuts/explainer').set({ ...x, version: 3,
+        changes: [{ v: 2, note: 'Bigger logo' }, { v: 3, note: 'Quieter music' }],
+        history: [{ v: 2, video: t.video, poster: t.poster, script: [{ from: 0, to: 2, text: 'An older line' }], length: 8, note: 'Bigger logo' }] });
+    })()"""); pg.wait_for_timeout(600)
+    opts = J("[...document.querySelectorAll('#verSel option')].map((o) => [o.textContent, o.disabled])")
+    check(f"version menu lists current, kept and not-kept versions ({opts})", not J("document.getElementById('verSel').hidden")
+          and opts == [["v3 · current · Quieter music", False], ["v2 · Bigger logo", False], ["v1 · not kept", True]])
+    check("a Needs changes on v2 isn't pressed on v3, and says so", J("[...document.querySelectorAll('#verdict button')].every((b) => b.getAttribute('aria-pressed') === 'false')")
+          and J("!document.getElementById('staleV').hidden && document.getElementById('staleV').textContent") == "Needs changes on v2")
+    check("the cut list dot isn't amber for a stale verdict", J("!document.querySelector('.cutbtn[aria-current=\"true\"] .dot').classList.contains('changes')"))
+    check("current version: only v3's active note", J("[...document.querySelectorAll('#notes .note .body')].map((b) => b.textContent)") == ["Music too loud"])
+    check("current version: the sound switch shows", not J("document.getElementById('versions').hidden"))
+    pg.select_option("#verSel", "2"); pg.wait_for_timeout(500)
+    check("v2: its video plays", J("document.getElementById('vid').dataset.src === window.__old && document.getElementById('vid').getAttribute('src') === window.__old"))
+    check("v2: no sound switch, its own script", J("document.getElementById('versions').hidden") and J("document.querySelector('#script .sline .say').textContent") == "An older line")
+    check("v2: only v2's notes, resolved too, with Claude's reply", J("[...document.querySelectorAll('#notes .note .body')].map((b) => b.textContent)") == ["Logo too small"]
+          and pg.locator("#notes .note .reply").count() == 1 and pg.locator("#notes .note .acts").count() == 0 and pg.locator("#track .mark").count() == 1)
+    check("v2: read-only banner, no note form, no verdict", J("document.getElementById('pastTxt').textContent") == "Viewing v2, read-only"
+          and pg.locator("#b-current").is_visible() and not pg.locator("#composer").is_visible() and not pg.locator("#verdict").is_visible()
+          and not pg.locator("#script .lbtn").first.is_visible())
+    check("v2: the address names the version", J("location.hash") == "#explainer@v2")
+    J("document.activeElement.blur()"); pg.keyboard.press("n"); pg.keyboard.press("i"); pg.wait_for_timeout(100)
+    check("v2: n and i start nothing", J("document.activeElement.id") != "noteText" and J("document.getElementById('tFrom').value") in ("", "0:00.0"))
+    pg.locator("#script .sline .w").first.click(); pg.wait_for_timeout(200)
+    check("v2: tapping a word opens no note form", J("document.getElementById('composer').parentNode.id") == "dock" and J("document.getElementById('lineTarget').hidden"))
+    pg.locator("#b-current").click(); pg.wait_for_timeout(500)
+    check("Back to v3: current video, form and verdict back", J("document.getElementById('vid').dataset.src !== window.__old") and pg.locator("#composer").is_visible()
+          and pg.locator("#verdict").is_visible() and J("document.getElementById('pastBar').hidden") and J("location.hash") == "#explainer")
+    J("location.hash = '#explainer@v2'"); pg.wait_for_timeout(400)
+    check("a #key@v2 link opens that version", J("document.getElementById('pastTxt').textContent") == "Viewing v2, read-only" and not J("document.getElementById('pastBar').hidden"))
+    pg.locator(".cutbtn").filter(has_text="Teaser").first.click(); pg.wait_for_timeout(300)
+    pg.locator(".cutbtn").filter(has_text="Explainer").first.click(); pg.wait_for_timeout(400)
+    check("switching cut returns to the current version", J("document.getElementById('pastBar').hidden") and J("document.getElementById('verSel').value") == "3")
+    pg.locator('#verdict [data-v="changes"]').click(); pg.wait_for_timeout(300)
+    check("pressing Needs changes writes it for v3", J("window.__store.verdicts.explainer.version") == 3
+          and J("document.querySelector('#verdict [data-v=\"changes\"]').getAttribute('aria-pressed')") == "true" and J("document.getElementById('staleV').hidden"))
+    check("no page errors (versions)", not errs)
+    if errs: print(errs)
     ctx.close(); b.close()
 
 print(f"{sum(ok)}/{len(ok)} passed")

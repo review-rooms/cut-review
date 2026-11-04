@@ -102,14 +102,13 @@ button { cursor: pointer; }
 .seg { display: inline-flex; padding: 2px; background: var(--sunk); border-radius: 8px; font-size: 12px; }
 .seg button { border: 0; background: none; padding: 4px 9px; border-radius: 6px; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
-.log { position: relative; font-size: 12px; color: var(--muted); }
-.log summary { list-style: none; cursor: pointer; padding: 4px 2px; white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
-.log summary::-webkit-details-marker { display: none; }
-.log.has summary::after { content: " ▾"; }
-.log:not(.has) summary { cursor: default; }
-.log ul { position: absolute; right: 0; top: 100%; z-index: 20; width: max-content; max-width: min(360px, 80vw); margin: 4px 0 0; padding: 8px 12px 8px 26px;
-  background: var(--panel); border: 1px solid var(--line3); border-radius: 8px; box-shadow: var(--shadow); color: var(--ink2); }
-.log li + li { margin-top: 4px; }
+/* the version menu beside the title: the current version with its change, and the past ones to look back at */
+.versel { min-width: 0; max-width: min(300px, 100%); padding: 4px 6px; font-size: 12px; color: var(--muted); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; text-overflow: ellipsis; cursor: pointer; }
+.pastbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--sunk); color: var(--ink2); font-size: 13px; }
+.pastbar .grow { flex: 1; }
+.pastv .lc .lbtn, .pastv .item .cap .ghost { display: none; }   /* a past version is read-only */
 
 .work { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 /* the picture takes what the script strip leaves; the video letterboxes inside it (regions follow the picture) */
@@ -253,13 +252,14 @@ button { cursor: pointer; }
 .composer.pop .times, .composer.pop #pickRow, .composer.pop .kbd { display: none; }
 .composer:not(.pop) .esc, .composer:not(.pop) .linetarget { display: none; }
 
-.verdict { display: flex; gap: 8px; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
+.verdict { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
 .verdict button { flex: 1; font-size: 13px; padding: 9px 12px; border-radius: 8px; }
 .verdict [data-v="changes"] { border: 1px solid var(--fixed-line); background: none; color: var(--fixed); }
 .verdict [data-v="changes"][aria-pressed="true"] { background: var(--fixed-soft); font-weight: 500; }
 .verdict [data-v="approved"] { border: 1px solid var(--solid); background: var(--solid); color: var(--solid-ink); }
 .verdict [data-v="approved"][aria-pressed="true"] { background: var(--good-soft); border-color: var(--good-dot); color: var(--good); font-weight: 500; }
 .verdict button:disabled { opacity: 0.5; cursor: default; }
+.verdict .stale { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--faint); }
 
 /* ---------- sets */
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding-bottom: 24px; }
@@ -311,7 +311,7 @@ button { cursor: pointer; }
 /* fingers: every control at least 44 px (issue 10); after the rules it overrides, so it wins */
 @media (pointer: coarse), (max-width: 760px) {
   :root { --hit: 44px; }
-  .btn, .ghost, .seg button, .primary, .esc, .follow, .selbtn, .crow label, .crow select, .tfield input, .verdict button, .cutbtn { min-height: var(--hit); }
+  .btn, .ghost, .seg button, .primary, .esc, .follow, .selbtn, .crow label, .crow select, .tfield input, .verdict button, .cutbtn, .versel { min-height: var(--hit); }
   .note button.t, .note .acts .btn { min-height: var(--hit); }
   .note .tk { min-height: var(--hit); padding: 0 12px; }
   .ghost, .seg button, .tfield .ghost { min-width: var(--hit); }
@@ -353,8 +353,9 @@ button { cursor: pointer; }
       <span class="meta mono" id="meta"></span>
       <span class="grow"></span>
       <span class="versions seg" id="versions" role="group" aria-label="Version" hidden></span>
-      <details class="log" id="logCard"><summary class="mono" id="logSum"></summary><ul id="log"></ul></details>
+      <select class="versel mono" id="verSel" aria-label="Version" hidden></select>
     </div>
+    <div class="pastbar" id="pastBar" hidden><span id="pastTxt"></span><span class="grow"></span><button class="btn" id="b-current"></button></div>
     <p class="why" id="why"></p>
 
     <section id="setView" hidden>
@@ -422,6 +423,7 @@ button { cursor: pointer; }
       <p class="kbd mono">k play · , . frame · n note · i o range · r or drag a box</p>
     </div></div>
     <div class="verdict" id="verdict" role="group" aria-label="Verdict">
+      <p class="stale" id="staleV" hidden></p>
       <button data-v="changes" aria-pressed="false">Needs changes</button>
       <button data-v="approved" aria-pressed="false">Approve</button>
     </div>
@@ -435,7 +437,7 @@ button { cursor: pointer; }
   const $ = (id) => ids[id] || (ids[id] = document.getElementById(id));   // every element with an id lives as long as the page
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
-              sel: null, filter: "active", stampT: 0, stampLocked: false, item: null,
+              sel: null, viewV: null, filter: "active", stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
               assets: null, mic: false, take: null, takeBusy: false, saving: false, loaded: {} };
@@ -461,8 +463,21 @@ button { cursor: pointer; }
   let entryList = null, entryMap = null;
   const entries = () => entryList || (entryList = [...S.cuts.map((c) => ({ ...c, kind: "cut" })), ...S.sets.map((s) => ({ ...s, kind: "set" }))]
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.key.localeCompare(b.key)));
-  const entryOf = (key) => (entryMap || (entryMap = new Map(entries().map((e) => [e.key, e])))).get(key);
+  const rawEntry = (key) => (entryMap || (entryMap = new Map(entries().map((e) => [e.key, e])))).get(key);
   const dropEntries = () => { entryList = entryMap = null; };
+  // the selected cut or set as on screen: on a past version (S.viewV, from its history) that version's video,
+  // poster, script and items, with no alternate videos. Kept until the entry or the version changes
+  const pastOf = (e, h) => ({ ...e, video: h.video, poster: h.poster, script: h.script || e.script, length: h.length ?? e.length, items: h.items || e.items, alts: [], version: h.v });
+  const pastEntry = (e, v) => (e.history || []).find((h) => +h.v === v);
+  let pastCache = null;
+  const entryOf = (key) => {
+    const e = rawEntry(key);
+    if (!e || key !== S.sel || !S.viewV) return e;
+    if (pastCache?.e !== e || pastCache.v !== S.viewV) { const h = pastEntry(e, S.viewV); pastCache = { e, v: S.viewV, x: h ? pastOf(e, h) : e }; }
+    return pastCache.x;
+  };
+  // a "Needs changes" given on an older version than the one in the room no longer counts; an approval stays
+  const verdictOf = (key) => { const v = S.verdicts[key]; return v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v; };
 
   // the cut list is built once per set of entries; a snapshot only updates its dots, counts and the tally
   let sideSig = "";
@@ -503,7 +518,7 @@ button { cursor: pointer; }
     for (const n of S.notes) { total.set(n.cut, (total.get(n.cut) || 0) + 1); if (n.status === "open") open.set(n.cut, (open.get(n.cut) || 0) + 1); }
     for (const [key, x] of sideBtns) {
       setAttr(x.b, "aria-current", String(S.sel === key));
-      const v = S.verdicts[key]?.state;
+      const v = verdictOf(key)?.state;
       setCls(x.dot, "dot" + (v === "approved" ? " approved" : v === "changes" ? " changes" : ""));
       const o = open.get(key) || 0;
       setCls(x.count, "count" + (o ? " open" : ""));
@@ -513,12 +528,21 @@ button { cursor: pointer; }
   }
 
   // ---------- selection
-  function select(key, push) {
-    const e = entryOf(key); if (!e) return;
-    const changed = S.sel !== key;
+  // v: the version to show (null: the current one); left out, another cut goes back to the current version
+  function select(key, push, v) {
+    const cur = rawEntry(key); if (!cur) return;
+    const changed = S.sel !== key, was = S.viewV;
     S.sel = key;
-    if (changed) selNotes = null;
-    if (push) { try { history.replaceState(null, "", "#" + key); } catch (err) {} }
+    S.viewV = v !== undefined ? v : changed ? null : S.viewV;
+    if (S.viewV === (cur.version || 1) || (S.viewV && !pastEntry(cur, S.viewV))) S.viewV = null;   // not kept: the current one
+    const moved = changed || S.viewV !== was, past = !!S.viewV, e = entryOf(key);
+    if (moved) { selNotes = null; if (past) vid.pause(); }
+    if (push) { try { history.replaceState(null, "", "#" + key + (past ? "@v" + S.viewV : "")); } catch (err) {} }
+    document.body.classList.toggle("pastv", past);
+    $("dock").hidden = past; $("verdict").hidden = past;
+    $("filter").hidden = past;   // a past version shows its notes in every status
+    $("pastBar").hidden = !past;
+    if (past) { setText($("pastTxt"), "Viewing v" + S.viewV + ", read-only"); setText($("b-current"), "Back to v" + cur.version); }
     if (notice && changed) { if ($("status").textContent === notice) banner(""); notice = ""; }
     const isSet = e.kind === "set";
     $("setView").hidden = !isSet;
@@ -526,7 +550,7 @@ button { cursor: pointer; }
     $("workView").classList.toggle("noscript", isSet || !(e.script || []).length);
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
-    if (changed) {
+    if (moved) {
       S.stampEnd = null; S.region = null; S.focus = null; S.line = null; S.item = null;
       renderLineTarget(); hideSelBtn(); setDrawing(false); clearBadTimes();
     }
@@ -540,7 +564,7 @@ button { cursor: pointer; }
     if (e.aspect) facts.push(e.aspect);
     setText($("meta"), facts.join(" · "));
     setText($("why"), e.description || "");
-    renderLog(e);
+    renderVersions(rawEntry(key));
     if (isSet) {
       if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; $("b-dl").hidden = true; }
       $("versions").hidden = true;   // the sound versions belong to cuts
@@ -551,7 +575,7 @@ button { cursor: pointer; }
       if ($("stage").style.getPropertyValue("--ar") !== String(w / h)) $("stage").style.setProperty("--ar", String(w / h));
       if (vid.style.aspectRatio !== w + " / " + h) vid.style.aspectRatio = w + " / " + h;
       const pick = versionOf(e);
-      if (changed || vid.dataset.src !== (pick || "")) {
+      if (moved || vid.dataset.src !== (pick || "")) {   // moved: another version may share the video but not the poster
         const keep = changed ? 0 : (vid.currentTime || 0), playing = !changed && !vid.paused;
         vid.dataset.src = pick || "";
         if (pick) vid.src = pick; else vid.removeAttribute("src");
@@ -565,10 +589,14 @@ button { cursor: pointer; }
     renderVerdict(); renderNotes(); renderSide(); updateStamp();
     if (changed) paint(vid.currentTime || 0);
   }
+  $("b-current").onclick = () => select(S.sel, true, null);
 
   // ---------- verdict
   function renderVerdict() {
-    const v = S.verdicts[S.sel]?.state || "none", ver = "v" + (entryOf(S.sel)?.version || 1);
+    const v = verdictOf(S.sel)?.state || "none", ver = "v" + (entryOf(S.sel)?.version || 1), raw = S.verdicts[S.sel];
+    const stale = raw?.state === "changes" && v === "none";
+    $("staleV").hidden = !stale;
+    if (stale) setText($("staleV"), "Needs changes on v" + raw.version);
     for (const b of $("verdict").querySelectorAll("button")) {
       setAttr(b, "aria-pressed", String(b.dataset.v === v));
       b.disabled = !S.db || !S.canWrite;
@@ -681,7 +709,7 @@ button { cursor: pointer; }
   }
   // which lines and words carry notes (open or fixed) and which words are picked, without rebuilding the rows
   function renderScriptMarks() {
-    const mine = notesForSel().filter((n) => n.line != null && (n.status === "open" || n.status === "fixed"));
+    const mine = notesForSel().filter((n) => n.line != null && (S.viewV || n.status === "open" || n.status === "fixed"));
     scriptRows.forEach((row, i) => {
       const here = mine.filter((n) => +n.line === i);
       row.tr.classList.toggle("noted", here.length > 0);
@@ -708,6 +736,7 @@ button { cursor: pointer; }
   }
   // q: {qs, qe, quote} for words or characters of the line, or null for the whole line
   function pickLine(i, q) {
+    if (S.viewV) return;
     const e = entryOf(S.sel), r = scriptOf(e)[i]; if (!r) return;
     const from = +r.from || 0, to = r.to != null ? +r.to : from;
     S.line = q && q.qe > q.qs ? { i, qs: q.qs, qe: q.qe, quote: q.quote } : { i, qs: null, qe: null, quote: null };
@@ -752,7 +781,7 @@ button { cursor: pointer; }
   function hideSelBtn() { $("selBtn").hidden = true; selFor = null; }
   function placeSelBtn() {
     const sel = window.getSelection && window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount || $("scriptCard").hidden) return hideSelBtn();
+    if (!sel || sel.isCollapsed || !sel.rangeCount || $("scriptCard").hidden || S.viewV) return hideSelBtn();
     const r = sel.getRangeAt(0);
     const say = (r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement)?.closest(".say");
     const tr = say && say.closest(".sline");
@@ -807,20 +836,25 @@ button { cursor: pointer; }
     S.nowRow = now;
     if (top != null) $("scriptBox").scrollTo({ top: Math.max(0, top), behavior: glide() });
   }
-  // the version beside the title, with what changed in it; earlier changes open under it
-  function renderLog(e) {
-    const log = e.changes || [], v = e.version || 1;
-    const last = log.find((x) => +x.v === v);
-    setText($("logSum"), "v" + v + (last ? " · " + last.note : ""));
-    $("logCard").classList.toggle("has", log.length > 0);
-    if (!log.length) $("logCard").open = false;
-    const sig = JSON.stringify(log);
-    if ($("log").dataset.sig === sig) return;
-    $("log").dataset.sig = sig;
-    $("log").replaceChildren(...log.slice().reverse().map((x) => el("li", null, "v" + x.v + " · " + x.note)));
+  // the version menu beside the title: the current version with its change, then each past one, newest first.
+  // Versions from before history was kept show, greyed, with their change only
+  function renderVersions(e) {
+    const box = $("verSel"), v = e.version || 1, log = e.changes || [];
+    const hist = e.history || [], noteOf = (n) => log.find((x) => +x.v === n)?.note || "";
+    const opts = [[v, "v" + v + " · current" + (noteOf(v) ? " · " + noteOf(v) : ""), false]];
+    for (let n = v - 1; n >= 1; n--) {
+      const h = pastEntry(e, n), note = h ? h.note || noteOf(n) : noteOf(n);
+      opts.push([n, "v" + n + (note ? " · " + note : "") + (h ? "" : " · not kept"), !h]);
+    }
+    box.hidden = v <= 1;
+    const sig = JSON.stringify(opts);
+    if (box.dataset.sig !== sig) {
+      box.dataset.sig = sig;
+      box.replaceChildren(...opts.map(([n, label, off]) => { const o = el("option", null, label); o.value = String(n); o.disabled = off; return o; }));
+    }
+    box.value = String(S.viewV || v);
   }
-  $("logCard").addEventListener("click", (ev) => { if (!$("logCard").classList.contains("has") && ev.target.closest("summary")) ev.preventDefault(); });
-  document.addEventListener("click", (ev) => { if ($("logCard").open && !$("logCard").contains(ev.target)) $("logCard").open = false; });
+  $("verSel").onchange = (ev) => select(S.sel, true, +ev.target.value || null);
 
   // ---------- player
   // While the video plays, the timeline, the time code, the script line and the From field follow it once per
@@ -977,6 +1011,7 @@ button { cursor: pointer; }
     const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || "");
     const e = entryOf(S.sel), kind = e?.kind;
     if (typing || !kind || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (S.viewV && /^[nior]$/.test(ev.key)) return;   // a past version takes no notes
     if (ev.key === "r") { ev.preventDefault(); if (!$("b-region").hidden) $("b-region").click(); return; }
     // in a set the arrow keys move the pick between items (issue 6)
     if (kind === "set" && (ev.key === "ArrowRight" || ev.key === "ArrowLeft")) {
@@ -1282,7 +1317,7 @@ button { cursor: pointer; }
     const e = entryOf(S.sel);
     return e?.kind === "set" && S.item ? (e.items || []).find((it) => it.name === S.item) || null : null;
   };
-  const regionable = () => { const e = entryOf(S.sel); return e?.kind === "cut" || (e?.kind === "set" && !!curItem() && curItem().kind !== "clip"); };
+  const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false; return e?.kind === "cut" || (e?.kind === "set" && !!curItem() && curItem().kind !== "clip"); };
   const itemRegions = (name) => itemCards.get(name)?.rg || null;
   // the overlay a region is drawn on: the video's, or the picked still's
   const surface = () => (entryOf(S.sel)?.kind === "set" ? itemRegions(curItem()?.name) : $("regions"));
@@ -1301,7 +1336,7 @@ button { cursor: pointer; }
     return n.tEnd != null ? t >= n.t - pad && t <= n.tEnd + pad : Math.abs(t - n.t) <= pad;
   };
   const live = (n) => n.status === "open" || n.status === "fixed";
-  const shownOnCut = (t) => notesForSel().filter((n) => reg(n.region) && (n.id === S.focus || (live(n) && inWindow(n, t))));
+  const shownOnCut = (t) => notesForSel().filter((n) => reg(n.region) && (n.id === S.focus || ((S.viewV || live(n)) && inWindow(n, t))));
   // per frame: only which notes' boxes show on the cut is checked; the boxes are rebuilt when that changes
   let shownKey = "";
   function regionsFollow(t) {
@@ -1331,7 +1366,7 @@ button { cursor: pointer; }
         const m = x.media, img = x.img;
         const p = img.naturalWidth ? fit(m.clientWidth, m.clientHeight, img.naturalWidth, img.naturalHeight)
           : { left: 0, top: 0, w: m.clientWidth, h: m.clientHeight };
-        const shown = notesForSel().filter((n) => n.item === name && reg(n.region) && (n.id === S.focus || live(n)));
+        const shown = notesForSel().filter((n) => n.item === name && reg(n.region) && (n.id === S.focus || S.viewV || live(n)));
         drawBoxes(x.rg, p, shown.map((n) => [n.status, reg(n.region), null]));
       }
     } else if (e?.kind !== "cut") { box.hidden = true; delete box.dataset.key; shownKey = ""; }
@@ -1413,7 +1448,7 @@ button { cursor: pointer; }
   const STATUS_LABEL = { open: "Open", fixed: "Fixed", resolved: "Resolved", wontfix: "Won't fix" };
   // the selected cut's notes in time order, kept until the notes or the selection change (copy before sorting)
   let selNotes = null;
-  const notesForSel = () => selNotes || (selNotes = S.notes.filter((n) => n.cut === S.sel)
+  const notesForSel = () => selNotes || (selNotes = S.notes.filter((n) => n.cut === S.sel && (!S.viewV || (n.version || 1) === S.viewV))
     .sort((a, b) => (a.t ?? -1) - (b.t ?? -1) || String(a.createdAt).localeCompare(String(b.createdAt))));
   // the range being marked: one element, resized in place
   let selBox = null;
@@ -1493,7 +1528,7 @@ button { cursor: pointer; }
     }
     if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude: "), document.createTextNode(n.reply)); card.append(r); }
     const acts = el("div", "acts");
-    if (S.canWrite && S.db) {
+    if (S.canWrite && S.db && !S.viewV) {
       if (n.status === "fixed") acts.append(act("Looks right", () => setStatus(n, "resolved"), true), act("Still wrong", () => setStatus(n, "open")));
       if (n.status === "resolved" || n.status === "wontfix") acts.append(act("Reopen", () => setStatus(n, "open")));
       if (n.status === "open" && n.by && n.by === S.me) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete()
@@ -1510,14 +1545,14 @@ button { cursor: pointer; }
     setText($("openN"), nOpen ? nOpen + " open" : all.length ? "Nothing open" : "No notes");
     setText($("fixedN"), nFixed ? "· " + nFixed + " fixed" : "");
     let list = all;
-    if (S.filter === "active") list = list.filter((n) => n.status === "open" || n.status === "fixed");
+    if (S.filter === "active" && !S.viewV) list = list.filter((n) => n.status === "open" || n.status === "fixed");
     let msg = null;
     if (!S.db) { msg = "Notes need you to be signed in to claude.ai."; list = []; }
     else if (!list.length) {
-      msg = all.length ? "Nothing open here. Switch to All to see resolved notes." :
+      msg = S.viewV ? "No notes were written on v" + S.viewV + "." : all.length ? "Nothing open here. Switch to All to see resolved notes." :
         isSet ? "No notes yet. Pick an item and write what should change." : "No notes yet. Pause on a frame, or select words in the script, and write what should change.";
     }
-    const ctx = [isSet, S.canWrite, !!S.db, S.me].join();
+    const ctx = [isSet, S.canWrite, !!S.db, S.me, S.viewV].join();
     const want = [];
     for (const n of list) {
       const sig = ctx + JSON.stringify(n);
@@ -1673,15 +1708,17 @@ button { cursor: pointer; }
     banner(notice, false);
     try { history.replaceState(null, "", "#" + S.sel); } catch (err) {}
   }
+  // "#poll" or "#poll@v2": a cut, and a past version of it
+  const hashOf = () => { const h = decodeURIComponent((location.hash || "").slice(1)), m = /^(.*)@v(\d+)$/.exec(h); return m ? [m[1], +m[2]] : [h, null]; };
   function refresh() {
     renderSide();
-    const want = decodeURIComponent((location.hash || "").slice(1));
+    const [want, wantV] = hashOf();
     const all = entries();
     if (!S.loaded.cuts || !S.loaded.sets) return;   // the hash may name a set whose snapshot hasn't come yet (issue 4)
     if (!all.length) { $("title").textContent = "This room has no cuts yet"; return; }
     if (S.sel && entryOf(S.sel)) select(S.sel, false);
     else {
-      select(want && entryOf(want) ? want : all[0].key, false);
+      select(want && entryOf(want) ? want : all[0].key, false, want && entryOf(want) ? wantV : null);
       if (want && !entryOf(want)) unknownKey(want);
     }
   }
@@ -1742,9 +1779,9 @@ button { cursor: pointer; }
     }, () => {});
   }
   window.addEventListener("hashchange", () => {
-    const k = decodeURIComponent(location.hash.slice(1));
-    if (!k || k === S.sel || !S.sel) return;
-    if (entryOf(k)) select(k, false); else unknownKey(k);
+    const [k, v] = hashOf();
+    if (!k || !S.sel || (k === S.sel && v === S.viewV)) return;
+    if (entryOf(k)) select(k, false, v); else unknownKey(k);
   });
   updateStamp();
   boot();

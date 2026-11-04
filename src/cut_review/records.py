@@ -35,15 +35,23 @@ def _hash(data: dict) -> str:
     return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
 
 
-def _versioned(room: Room, rid: str, assets: list[str | None], note: str | None) -> tuple[int, list[dict]]:
+def _versioned(room: Room, rid: str, assets: list[str | None], note: str | None) -> tuple[int, list[dict], list[dict]]:
+    """(version, changes, history) from the confirmed state; history gains the confirmed version on a bump."""
     conf = room.state["records"].get(rid, {}).get("confirmed")
     if not conf:
-        return 1, []
-    version, changes = conf["version"], list(conf.get("changes", []))
+        return 1, [], []
+    version, changes, history = conf["version"], list(conf.get("changes", [])), list(conf.get("history", []))
     if conf.get("assets") != assets:
+        past = {"v": version, "note": next((c["note"] for c in changes if c.get("v") == version), "")}
+        snap = conf.get("snap")
+        if snap:
+            history.append({**past, **snap})
+        elif rid.startswith("cuts/"):   # state from before snapshots: the old ids are all we know
+            old = conf.get("assets") or [None, None]
+            history.append({**past, "video": old[0], "poster": old[1] if len(old) > 1 else None})
         version += 1
         changes.append({"v": version, "note": note or "re-rendered"})
-    return version, changes
+    return version, changes, history
 
 
 def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_length) -> list[tuple[str, str, dict, list]]:
@@ -68,7 +76,7 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
         alts = [{"key": alt["key"], "label": alt.get("label", alt["key"]), "video": room.asset_url(alt["file"])}
                 for alt in c.get("alts", [])]
         assets = [video, poster] + [alt["video"] for alt in alts]   # a new alternate is a new version too
-        version, changes = _versioned(room, f"cuts/{c['key']}", assets, notes.get(c["key"]))
+        version, changes, history = _versioned(room, f"cuts/{c['key']}", assets, notes.get(c["key"]))
         length = c.get("length")
         if length is None:
             length = probe(room.abspath(c["file"]))
@@ -79,6 +87,8 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
             "length": length, "video": video, "poster": poster,
             "version": version, "changes": changes, "script": list(c.get("script", [])),
         }
+        if history:   # left out while empty, so rooms built before history don't rewrite every record
+            data["history"] = history
         if alts:
             data["alts"] = alts
             for k in ("videoLabel", "altDefault"):
@@ -91,13 +101,15 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
         items = [{"name": it["name"], "kind": kind_of(it["file"]), "url": room.asset_url(it["file"])}
                  for it in set_items(room, s)]
         assets = [it["url"] for it in items]
-        version, changes = _versioned(room, f"sets/{s['key']}", assets, notes.get(s["key"]))
+        version, changes, history = _versioned(room, f"sets/{s['key']}", assets, notes.get(s["key"]))
         data = {
             "title": s.get("title", s["key"]), "short": s.get("short", s.get("title", s["key"])),
             "group": s.get("group", ""), "order": order, "aspect": s.get("aspect", "4:5"),
             "description": s.get("description", ""), "items": items,
             "version": version, "changes": changes,
         }
+        if history:
+            data["history"] = history
         out.append(("sets", s["key"], data, assets))
         order += 1
     return out
@@ -116,12 +128,17 @@ def stage(room: Room, records: list[tuple[str, str, dict, list]], only_changed: 
         rec = room.state["records"].setdefault(rid, {})
         h = _hash(data)
         conf = rec.get("confirmed")
+        snap = ({k: data.get(k) for k in ("video", "poster", "script", "length")} if coll == "cuts"
+                else {"items": data["items"]} if coll == "sets" else None)
         if only_changed and conf and conf.get("hash") == h:
             rec.pop("pending", None)
+            if snap:
+                conf["snap"] = snap   # the database holds exactly this, so a later bump can keep it in history
             continue
         path = outdir / f"{coll}__{doc}.json"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n")
-        rec["pending"] = {"hash": h, "version": data.get("version"), "assets": assets, "changes": data.get("changes", [])}
+        rec["pending"] = {"hash": h, "version": data.get("version"), "assets": assets, "changes": data.get("changes", []),
+                          "history": data.get("history", []), "snap": snap}
         w = {"op": "set", "collection": coll, "doc_id": doc, "file_path": str(path)}
         if conf and conf.get("db"):
             w["if_version"] = conf["db"]

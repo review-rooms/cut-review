@@ -81,6 +81,9 @@ the room project next to the work that renders the videos; never commit `.cut-re
 4. `cut-review uploads` → `Artifact` upload → `cut-review assets <file>` (only changed files are listed).
 5. `cut-review build --note <key>="<what changed>"` (one `--note` per changed cut) → `ArtifactData` `batch` →
    `cut-review written <file>`. The room swaps the video live and shows the new version and change log.
+   The version before it goes into the cut's `history`, so the owner can pick it in the version menu and watch it
+   with the notes made on it (read-only). Never delete an old asset from the room: past versions play from it.
+   A "Needs changes" verdict on the older version stops showing as pressed; the owner gives the new one a verdict.
 6. `cut-review fix <id>="<one line: what changed>" …` (or `--from replies.json`) → `ArtifactData` `batch` →
    `cut-review written <file>`. Each note turns "Fixed, check it" with your reply and the version it is fixed in.
 7. Tell the user what you changed per cut and which notes you left open or marked won't fix, with the link.
