@@ -620,7 +620,7 @@ def test_page_drags_apply_once_per_frame(room_dir, capsys):
 
 def test_page_touch_targets_and_contract(room_dir, capsys):
     html = page_html(room_dir)
-    assert "@media (pointer: coarse), (max-width: 760px) {\n  :root { --hit: 44px; }" in html   # issue 10
+    assert "@media (pointer: coarse), (max-width: 760px) {\n  :root { --hit: 44px; }" in html and ".note button.t, .note .acts .btn { min-height: var(--hit); }" in html   # issue 10
     assert "padding-left: max(16px, env(safe-area-inset-left, 0px))" in html
     assert "padding-right: max(16px, env(safe-area-inset-right, 0px))" in html
     assert ':root[data-theme="dark"]' in html and ':root:not([data-theme="light"])' in html

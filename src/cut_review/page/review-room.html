@@ -59,9 +59,6 @@
 }
 @media (pointer: coarse), (max-width: 760px) {
   :root { --hit: 44px; }
-  .seg button { min-height: var(--hit); min-width: var(--hit); }
-  button.t, .note .acts .btn { min-height: var(--hit); }
-  .mark::before { inset: -10px -14px; }
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--display); font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
@@ -134,7 +131,10 @@ svg { display: block; flex: none; }
 .verdict button[aria-pressed="true"][data-v="none"] { background: var(--sunk); color: var(--ink); box-shadow: none; }
 
 .work { display: grid; grid-template-columns: auto minmax(340px, 1fr); gap: 24px; align-items: start; }
-.stagecol { display: flex; flex-direction: column; gap: 10px; width: min-content; min-width: min(100%, 520px); max-width: 100%; }
+.stagecol { display: flex; flex-direction: column; gap: 10px; width: fit-content; max-width: 100%; min-width: 0; }
+/* the picture sets the column's width; the transport and the key hints wrap inside it */
+.stagecol .controls, .stagecol .kbd { width: 0; min-width: 100%; }
+@media (min-width: 761px) { .monitor { min-width: 440px; } }
 .monitor { background: var(--stage); border-radius: calc(var(--r) + 4px); padding: 8px; display: flex; flex-direction: column; gap: 8px; color: var(--stage-ink); box-shadow: var(--shadow); }
 .stage { position: relative; background: #000000; border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
 .stage video { display: block; max-width: 100%; background: #000000; }
@@ -312,6 +312,14 @@ button.t:hover { background: var(--line); }
   .tfield { flex: 1 1 100%; }
   .tfield input { flex: 1; min-width: 0; }
   .primary { flex: 1 1 100%; margin-left: 0; }
+  .items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .item .cap { flex-wrap: wrap; padding: 6px 6px 6px 10px; }
+}
+/* fingers: every control at least 44 px (after the rules it overrides) */
+@media (pointer: coarse), (max-width: 760px) {
+  .seg button { min-height: var(--hit); min-width: var(--hit); }
+  .note button.t, .note .acts .btn { min-height: var(--hit); }
+  .mark::before { inset: -10px -14px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 </style>
