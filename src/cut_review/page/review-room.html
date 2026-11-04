@@ -114,6 +114,11 @@ button { cursor: pointer; }
 /* the picture takes what the script strip leaves; the video letterboxes inside it (regions follow the picture) */
 .stagecol { display: flex; flex-direction: column; gap: 10px; flex: 1 1 0; min-height: 240px; }
 .stage { --ar: 1.7778; position: relative; flex: 1; min-height: 0; background: var(--stage); border-radius: 8px; overflow: hidden; }
+/* compare: the current picture and a past version side by side (stacked on phones), each with its label */
+.pair { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.pic { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; min-width: 0; min-height: 0; }
+.piclbl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.piclbl .chip { border: 1px solid var(--line3); background: none; border-radius: 99px; padding: 1px 8px; font-size: 11px; color: var(--open); }
 .stage video { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: none; cursor: pointer; }
 .regions { position: absolute; pointer-events: none; }
 .regions.drawing { pointer-events: auto; cursor: crosshair; touch-action: none; outline: 2px solid var(--open); outline-offset: -2px; background: rgba(0, 0, 0, 0.18); }
@@ -282,7 +287,7 @@ button { cursor: pointer; }
   .app { grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto auto auto; height: auto; min-height: 100vh; }
   .side { grid-row: 2 / span 2; position: sticky; top: 0; height: 100vh; align-self: start; }
   .main { overflow: visible; padding-bottom: 0; }
-  .stagecol { flex: none; min-height: 0; }
+  .stagecol, .pair { flex: none; min-height: 0; }
   .stage { flex: none; width: 100%; aspect-ratio: var(--ar); max-height: 64vh; }
   .panel { grid-column: 2; border-left: 0; border-top: 1px solid var(--line); }
   .notes { overflow: visible; }
@@ -300,6 +305,8 @@ button { cursor: pointer; }
   .cutbtn .nm { overflow: visible; }
   .main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); }
   .track { order: -1; flex-basis: 100%; margin: 0; }
+  .pair { flex-direction: column; }
+  .pic { flex: none; }   /* stacked, the pair has no height to share */
   .strip { margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))); max-height: 60vh; }
   .striphd { padding-inline: 16px; }
   .scriptbox { padding-inline: 6px; }
@@ -311,7 +318,7 @@ button { cursor: pointer; }
 /* fingers: every control at least 44 px (issue 10); after the rules it overrides, so it wins */
 @media (pointer: coarse), (max-width: 760px) {
   :root { --hit: 44px; }
-  .btn, .ghost, .seg button, .primary, .esc, .follow, .selbtn, .crow label, .crow select, .tfield input, .verdict button, .cutbtn, .versel { min-height: var(--hit); }
+  .btn, .ghost, .seg button, .primary, .esc, .follow, .selbtn, .crow label, .crow select, .tfield input, .verdict button, .cutbtn, .versel, .piclbl .chip { min-height: var(--hit); }
   .note button.t, .note .acts .btn { min-height: var(--hit); }
   .note .tk { min-height: var(--hit); padding: 0 12px; }
   .ghost, .seg button, .tfield .ghost { min-width: var(--hit); }
@@ -354,6 +361,7 @@ button { cursor: pointer; }
       <span class="grow"></span>
       <span class="versions seg" id="versions" role="group" aria-label="Version" hidden></span>
       <select class="versel mono" id="verSel" aria-label="Version" hidden></select>
+      <button class="ghost" id="b-cmp" aria-pressed="false" title="Watch a past version beside this one" hidden>Compare</button>
     </div>
     <div class="pastbar" id="pastBar" hidden><span id="pastTxt"></span><span class="grow"></span><button class="btn" id="b-current"></button></div>
     <p class="why" id="why"></p>
@@ -364,7 +372,17 @@ button { cursor: pointer; }
 
     <section class="work" id="workView">
       <div class="stagecol" id="stagecol">
-        <div class="stage tall" id="stage"><video id="vid" playsinline preload="metadata"></video><div class="regions" id="regions" aria-hidden="true"></div></div>
+        <div class="pair" id="pair">
+          <div class="pic">
+            <div class="piclbl" id="lbl1" hidden><span class="mono" id="cmpCur"></span><button class="ghost" id="snd1" data-side="cur"></button></div>
+            <div class="stage tall" id="stage"><video id="vid" playsinline preload="metadata"></video><div class="regions" id="regions" aria-hidden="true"></div></div>
+          </div>
+          <div class="pic" id="pic2" hidden>
+            <div class="piclbl"><select class="versel mono" id="cmpSel" aria-label="Version to compare"></select><button class="ghost" id="snd2" data-side="past"></button>
+              <button class="chip" id="cmpNotes" title="Open this version with its notes"></button></div>
+            <div class="stage" id="stage2"><video id="vid2" playsinline preload="metadata" muted></video></div>
+          </div>
+        </div>
         <div class="controls">
           <button class="play" id="b-play" title="Play or pause (k)" aria-label="Play">▶</button>
           <button class="step" id="b-back" title="Back one frame (,)" aria-label="Back one frame">‹</button>
@@ -437,11 +455,11 @@ button { cursor: pointer; }
   const $ = (id) => ids[id] || (ids[id] = document.getElementById(id));   // every element with an id lives as long as the page
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
-              sel: null, viewV: null, filter: "active", stampT: 0, stampLocked: false, item: null,
+              sel: null, viewV: null, cmp: null, cmpSound: "cur", filter: "active", stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
               assets: null, mic: false, take: null, takeBusy: false, saving: false, loaded: {} };
-  const vid = $("vid");
+  const vid = $("vid"), vid2 = $("vid2");   // vid2: the past version beside it while comparing (S.cmp)
 
   const fmt = (t) => {
     if (t == null || isNaN(t)) return "–";
@@ -476,6 +494,8 @@ button { cursor: pointer; }
     if (pastCache?.e !== e || pastCache.v !== S.viewV) { const h = pastEntry(e, S.viewV); pastCache = { e, v: S.viewV, x: h ? pastOf(e, h) : e }; }
     return pastCache.x;
   };
+  // the past versions a cut can be compared with: the kept ones, newest first (never a set's)
+  const keptOf = (e) => e?.kind === "cut" ? (e.history || []).filter((h) => h.video).sort((a, b) => b.v - a.v) : [];
   // a "Needs changes" given on an older version than the one in the room no longer counts; an approval stays
   const verdictOf = (key) => { const v = S.verdicts[key]; return v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v; };
 
@@ -536,8 +556,8 @@ button { cursor: pointer; }
     S.viewV = v !== undefined ? v : changed ? null : S.viewV;
     if (S.viewV === (cur.version || 1) || (S.viewV && !pastEntry(cur, S.viewV))) S.viewV = null;   // not kept: the current one
     const moved = changed || S.viewV !== was, past = !!S.viewV, e = entryOf(key);
-    if (moved) { selNotes = null; if (past) vid.pause(); }
-    if (push) { try { history.replaceState(null, "", "#" + key + (past ? "@v" + S.viewV : "")); } catch (err) {} }
+    if (moved) { stopCompare(); selNotes = null; if (past) vid.pause(); }
+    if (push) setHash();
     document.body.classList.toggle("pastv", past);
     $("dock").hidden = past; $("verdict").hidden = past;
     $("filter").hidden = past;   // a past version shows its notes in every status
@@ -564,7 +584,7 @@ button { cursor: pointer; }
     if (e.aspect) facts.push(e.aspect);
     setText($("meta"), facts.join(" · "));
     setText($("why"), e.description || "");
-    renderVersions(rawEntry(key));
+    renderVersions(rawEntry(key)); renderCompare();
     if (isSet) {
       if (changed) { vid.pause(); vid.removeAttribute("src"); vid.dataset.src = ""; $("b-dl").hidden = true; }
       $("versions").hidden = true;   // the sound versions belong to cuts
@@ -590,6 +610,79 @@ button { cursor: pointer; }
     if (changed) paint(vid.currentTime || 0);
   }
   $("b-current").onclick = () => select(S.sel, true, null);
+  // "#key", "#key@v2" (a past version) or "#key@v3~v2" (v3 compared with v2)
+  function setHash() {
+    const cur = rawEntry(S.sel)?.version || 1;
+    try { history.replaceState(null, "", "#" + S.sel + (S.viewV ? "@v" + S.viewV : S.cmp ? "@v" + cur + "~v" + S.cmp : "")); } catch (err) {}
+  }
+
+  // ---------- compare: a kept past version plays beside the current one, following its transport. The current
+  // version stays live (notes, form, verdict, boxes); only one side has sound
+  function startCompare(v) {
+    const h = keptOf(rawEntry(S.sel)).find((h) => +h.v === v);
+    if (!h || S.viewV) return;
+    S.cmp = v;
+    if (vid2.getAttribute("src") !== h.video) { vid2.src = h.video; if (h.poster) vid2.poster = h.poster; else vid2.removeAttribute("poster"); }
+    applySound(); renderCompare(); follow();
+  }
+  function stopCompare() {
+    if (!S.cmp) return;
+    S.cmp = null; S.cmpSound = "cur";
+    vid2.pause(); vid2.removeAttribute("src"); vid2.removeAttribute("poster"); vid2.load();
+    applySound(); renderCompare();
+  }
+  function applySound() {
+    vid.muted = !!S.cmp && S.cmpSound === "past";
+    vid2.muted = !S.cmp || !vid.muted;
+    for (const b of [$("snd1"), $("snd2")]) {
+      const on = (b.dataset.side === "past") === (S.cmpSound === "past");
+      setAttr(b, "aria-pressed", String(on)); setText(b, on ? "🔊" : "🔇");
+      setAttr(b, "aria-label", on ? "Sound from this version" : "Play the sound of this version");
+    }
+  }
+  function renderCompare() {
+    const e = rawEntry(S.sel), kept = keptOf(e);
+    $("b-cmp").hidden = !kept.length || !!S.viewV;
+    if (S.cmp && (!kept.some((h) => +h.v === S.cmp) || S.viewV)) { stopCompare(); return; }
+    setAttr($("b-cmp"), "aria-pressed", String(!!S.cmp));
+    $("pic2").hidden = $("lbl1").hidden = !S.cmp;
+    if (!S.cmp) return;
+    setText($("cmpCur"), "v" + (e.version || 1) + " · current");
+    const box = $("cmpSel"), sig = JSON.stringify(kept.map((h) => [h.v, h.note]));
+    if (box.dataset.sig !== sig) {
+      box.dataset.sig = sig;
+      box.replaceChildren(...kept.map((h) => { const o = el("option", null, "v" + h.v + (h.note ? " · " + h.note : "")); o.value = String(h.v); return o; }));
+    }
+    box.value = String(S.cmp);
+    const n = S.notes.filter((x) => x.cut === S.sel && (x.version || 1) === S.cmp).length;
+    setText($("cmpNotes"), n + (n === 1 ? " note" : " notes"));
+    const ar = $("stage").style.getPropertyValue("--ar");   // the past version in the current one's frame shape
+    if ($("stage2").style.getPropertyValue("--ar") !== ar) $("stage2").style.setProperty("--ar", ar);
+    if (vid2.style.aspectRatio !== vid.style.aspectRatio) vid2.style.aspectRatio = vid.style.aspectRatio;
+  }
+  $("b-cmp").onclick = () => { if (S.cmp) stopCompare(); else startCompare(+keptOf(rawEntry(S.sel))[0]?.v); setHash(); };
+  $("cmpSel").onchange = (ev) => { startCompare(+ev.target.value); setHash(); };
+  $("cmpNotes").onclick = () => { const v = S.cmp; select(S.sel, true, v); };
+  for (const b of [$("snd1"), $("snd2")]) b.onclick = () => { S.cmpSound = b.dataset.side; applySound(); };
+  vid2.addEventListener("click", () => $("b-play").click());
+  // the follower takes the main video's time (clamped to its own length), rate and play state on its events
+  function follow() {
+    if (!S.cmp) return;
+    const d2 = isFinite(vid2.duration) && vid2.duration > 0 ? vid2.duration : Infinity;
+    const t = Math.min(vid.currentTime || 0, d2 - 0.001);
+    if (vid2.readyState && Math.abs((vid2.currentTime || 0) - t) > 0.5 / FPS) vid2.currentTime = t;
+    if (vid2.playbackRate !== vid.playbackRate) vid2.playbackRate = vid.playbackRate;
+    if (vid.paused) { if (!vid2.paused) vid2.pause(); }
+    else if (vid2.paused && t < d2 - 0.05) vid2.play().catch(() => {});
+  }
+  for (const ev of ["play", "pause", "seeking", "seeked", "ratechange"]) vid.addEventListener(ev, follow);
+  vid2.addEventListener("loadedmetadata", follow);
+  // per frame while playing: put the follower back when it drifts more than a frame (no layout, no text)
+  function drift(t) {
+    if (!S.cmp || vid2.paused || vid2.seeking || !vid2.readyState) return;
+    const d2 = isFinite(vid2.duration) ? vid2.duration : Infinity, want = Math.min(t, d2 - 0.001);
+    if (Math.abs(vid2.currentTime - want) > 1 / FPS) vid2.currentTime = want;
+  }
 
   // ---------- verdict
   function renderVerdict() {
@@ -890,7 +983,7 @@ button { cursor: pointer; }
     regionsFollow(t);
   }
   let looping = false;
-  const onFrame = () => { looping = false; if (vid.paused || vid.ended) return; paint(vid.currentTime || 0); loop(); };
+  const onFrame = () => { looping = false; if (vid.paused || vid.ended) return; paint(vid.currentTime || 0); drift(vid.currentTime || 0); loop(); };
   function loop() {
     if (looping) return;
     looping = true;
@@ -1708,18 +1801,21 @@ button { cursor: pointer; }
     banner(notice, false);
     try { history.replaceState(null, "", "#" + S.sel); } catch (err) {}
   }
-  // "#poll" or "#poll@v2": a cut, and a past version of it
-  const hashOf = () => { const h = decodeURIComponent((location.hash || "").slice(1)), m = /^(.*)@v(\d+)$/.exec(h); return m ? [m[1], +m[2]] : [h, null]; };
+  // "#poll", "#poll@v2" (a past version) or "#poll@v3~v2" (the current version compared with v2): [key, v, compare]
+  const hashOf = () => {
+    const h = decodeURIComponent((location.hash || "").slice(1)), c = /^(.*)@v\d+~v(\d+)$/.exec(h), m = /^(.*)@v(\d+)$/.exec(h);
+    return c ? [c[1], null, +c[2]] : m ? [m[1], +m[2], null] : [h, null, null];
+  };
   function refresh() {
     renderSide();
-    const [want, wantV] = hashOf();
+    const [want, wantV, wantC] = hashOf();
     const all = entries();
     if (!S.loaded.cuts || !S.loaded.sets) return;   // the hash may name a set whose snapshot hasn't come yet (issue 4)
     if (!all.length) { $("title").textContent = "This room has no cuts yet"; return; }
     if (S.sel && entryOf(S.sel)) select(S.sel, false);
     else {
       select(want && entryOf(want) ? want : all[0].key, false, want && entryOf(want) ? wantV : null);
-      if (want && !entryOf(want)) unknownKey(want);
+      if (want && !entryOf(want)) unknownKey(want); else if (wantC) startCompare(wantC);
     }
   }
   // Snapshots don't render by themselves: an unchanged one is dropped, and the rest are drawn together in the
@@ -1736,7 +1832,7 @@ button { cursor: pointer; }
       drawAsked = false;
       const d = new Set(dirty); dirty.clear();
       if (d.has("room")) { refresh(); return; }       // refresh draws everything
-      if (d.has("notes")) { renderSide(); renderNotes(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
+      if (d.has("notes")) { renderSide(); renderNotes(); renderCompare(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
       if (d.has("verdicts")) { renderSide(); renderVerdict(); }
     };
     if (document.hidden) setTimeout(go, 0); else requestAnimationFrame(go);   // hidden pages get no frames
@@ -1779,9 +1875,11 @@ button { cursor: pointer; }
     }, () => {});
   }
   window.addEventListener("hashchange", () => {
-    const [k, v] = hashOf();
-    if (!k || !S.sel || (k === S.sel && v === S.viewV)) return;
-    if (entryOf(k)) select(k, false, v); else unknownKey(k);
+    const [k, v, c] = hashOf();
+    if (!k || !S.sel || (k === S.sel && v === S.viewV && c === S.cmp)) return;
+    if (!entryOf(k)) { unknownKey(k); return; }
+    select(k, false, v);
+    if (c) startCompare(c); else stopCompare();
   });
   updateStamp();
   boot();

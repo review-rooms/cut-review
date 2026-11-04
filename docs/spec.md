@@ -56,7 +56,16 @@ kept"). Picking a past version shows it read-only: its video and poster (no soun
 it kept one, a set's items as they were, and only the notes written on that version (`version`), in every status,
 on the notes panel, timeline, boxes and script; the note form, the verdict and the Active/All filter are hidden, n i
 o r and taps on words start nothing, and a "Viewing v2, read-only" bar has "Back to v3". Another cut or set, or
-"Back", returns to the current version; `#<key>@v2` links to a past version. a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
+"Back", returns to the current version; `#<key>@v2` links to a past version. On a cut with a kept past version (never a set),
+**Compare** beside the version menu puts a past version beside the current one ("v3 · current" and "v2 · <change>",
+side by side, stacked at 760 px and below; the past one picked in its label's menu, by default the newest kept one,
+shown in the current version's frame shape). Play, pause, frame steps, speed, loop and the timeline drive both: the
+past video follows the current one on its play, pause, seek and rate events, is put back from the per-frame loop when
+it drifts more than a frame, and stops at its own end when it is shorter. The transport, time and playhead are the
+current version's, and the current version stays live (notes, note form, script, verdict, boxes on its picture only).
+Sound plays from one side only, the current one (its chosen sound version) at first; a speaker on each label moves
+it. The past label's chip counts the notes written on that version and opens it read-only. Compare again, another
+cut or a version picked in the menu leaves compare; `#<key>@v3~v2` links to v3 compared with v2. a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
 deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
 A set's items are picked by tapping them (again to unpick; a tap on a clip's video, or playing or pausing it with its own controls, picks it but never unpicks), with the arrow keys or from the note form's menu; with
 none picked ("Whole set") a note is on the whole set (`item` null) and has no box, and the note box asks what should change in this set. A picked clip item takes a time or

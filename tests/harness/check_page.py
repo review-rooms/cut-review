@@ -232,6 +232,77 @@ with sync_playwright() as p:
           and J("document.querySelector('#verdict [data-v=\"changes\"]').getAttribute('aria-pressed')") == "true" and J("document.getElementById('staleV').hidden"))
     check("no page errors (versions)", not errs)
     if errs: print(errs)
+    ctx.close()
+
+    # compare: the explainer's v3 beside its kept v2 (the teaser's video), two notes written on v2
+    ctx = b.new_context(viewport={"width": W, "height": H}); pg = ctx.new_page(); J = pg.evaluate
+    errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
+    pg.goto(BASE + "#explainer"); pg.wait_for_function("document.getElementById('vid').readyState >= 1", timeout=30000)
+    J("""(async () => {
+      const s = window.__store, x = s.cuts.explainer, t = s.cuts.teaser;
+      window.__old = t.video;
+      for (const [id, text] of [['o1', 'Logo too small'], ['o2', 'Too dark']]) await window.__db.doc('notes/' + id).set({ cut: 'explainer', t: 1,
+        tEnd: null, region: null, item: null, line: null, quote: null, qStart: null, qEnd: null, text, status: 'resolved', reply: '', version: 2,
+        by: 'u_reviewer', createdAt: '2026-11-02T10:00:00Z' });
+      await window.__db.doc('cuts/explainer').set({ ...x, version: 3, changes: [{ v: 2, note: 'Bigger logo' }, { v: 3, note: 'Quieter music' }],
+        history: [{ v: 2, video: t.video, poster: t.poster, script: [], length: 8, note: 'Bigger logo' }] });
+    })()"""); pg.wait_for_timeout(600)
+    V = "document.getElementById('vid')"; V2 = "document.getElementById('vid2')"
+    check("Compare offered on a cut with a kept version", pg.locator("#b-cmp").is_visible())
+    cur = J(f"{V}.dataset.src")
+    pg.locator("#b-cmp").click(); pg.wait_for_timeout(400)
+    check("compare: two pictures, the current (alt kept) and v2's video", pg.locator("#vid").is_visible() and pg.locator("#vid2").is_visible()
+          and J(f"{V}.dataset.src") == cur and J(f"{V2}.getAttribute('src') === window.__old"))
+    check("compare: labelled v3 · current and v2 · its change", J("document.getElementById('cmpCur').textContent") == "v3 · current"
+          and J("document.getElementById('cmpSel').selectedOptions[0].textContent") == "v2 · Bigger logo")
+    check("compare: the address says so", J("location.hash") == "#explainer@v3~v2")
+    pg.wait_for_function(f"{V2}.readyState >= 2 && {V}.readyState >= 2", timeout=30000)
+    pg.locator("#b-play").click(); pg.wait_for_timeout(1000)
+    check("play plays both", J(f"!{V}.paused && !{V2}.paused"))
+    pg.locator("#b-play").click(); pg.wait_for_timeout(400)
+    check(f"pause pauses both, together ({J(f'[{V}.currentTime, {V2}.currentTime]')})", J(f"{V}.paused && {V2}.paused && Math.abs({V}.currentTime - {V2}.currentTime) < 0.1"))
+    pg.locator("#track").scroll_into_view_if_needed(); bb = pg.locator("#track").bounding_box()
+    pg.mouse.click(bb["x"] + bb["width"] * .5, bb["y"] + bb["height"] / 2); pg.wait_for_timeout(600)
+    t1, t2 = J(f"[{V}.currentTime, {V2}.currentTime]")
+    check(f"a seek on the timeline moves both ({t1:.2f}, {t2:.2f})", 5 < t1 < 7 and abs(t1 - t2) < 0.1)
+    J("document.activeElement.blur()")
+    for _ in range(3): pg.keyboard.press("."); pg.wait_for_timeout(150)
+    pg.locator("#b-back").click(); pg.wait_for_timeout(400)
+    s1, s2 = J(f"[{V}.currentTime, {V2}.currentTime]")
+    check(f"frame steps move both ({s1:.3f}, {s2:.3f})", abs(s1 - t1 - 2 / 30) < 0.02 and abs(s1 - s2) < 0.05)
+    pg.locator('[data-rate="0.5"]').click(); pg.wait_for_timeout(100)
+    check("speed reaches the past picture", J(f"{V2}.playbackRate") == 0.5); pg.locator('[data-rate="1"]').click()
+    check("sound from the current version only", J(f"[{V}.muted, {V2}.muted]") == [False, True])
+    pg.locator("#snd2").click(); pg.wait_for_timeout(100)
+    check("the speaker moves the sound to v2", J(f"[{V}.muted, {V2}.muted]") == [True, False])
+    pg.locator("#snd1").click(); pg.wait_for_timeout(100)
+    check("and back", J(f"[{V}.muted, {V2}.muted]") == [False, True])
+    pg.locator("#noteText").fill("Still loud here"); pg.keyboard.press("Enter"); pg.wait_for_timeout(600)
+    n = [x for x in store("notes") if x["text"] == "Still loud here"]
+    check("a note while comparing goes on the current version", len(n) == 1 and n[0]["version"] == 3 and n[0]["cut"] == "explainer"
+          and pg.locator("#vid2").is_visible())
+    if W <= 760:
+        b1, b2 = pg.locator("#stage").bounding_box(), pg.locator("#stage2").bounding_box()
+        check("phone: the pictures stack", b2["y"] >= b1["y"] + b1["height"] - 1 and abs(b1["x"] - b2["x"]) < 2)
+    check("no horizontal scroll while comparing", J("document.documentElement.scrollWidth <= window.innerWidth"))
+    check("the chip counts v2's notes", J("document.getElementById('cmpNotes').textContent") == "2 notes")
+    pg.locator("#cmpNotes").click(); pg.wait_for_timeout(500)
+    check("the chip opens v2 read-only and leaves compare", J("document.getElementById('pastTxt').textContent") == "Viewing v2, read-only"
+          and not pg.locator("#vid2").is_visible() and J("location.hash") == "#explainer@v2" and not pg.locator("#b-cmp").is_visible()
+          and J(f"{V}.dataset.src === window.__old"))
+    pg.locator("#b-current").click(); pg.wait_for_timeout(400)
+    J("location.hash = '#explainer@v3~v2'"); pg.wait_for_timeout(500)
+    check("a #key@v3~v2 link opens compare", pg.locator("#vid2").is_visible() and J(f"{V2}.getAttribute('src') === window.__old"))
+    pg.select_option("#verSel", "2"); pg.wait_for_timeout(400)
+    check("the version menu leaves compare", not pg.locator("#vid2").is_visible() and J("document.getElementById('verSel').value") == "2")
+    pg.locator("#b-current").click(); pg.wait_for_timeout(300); pg.locator("#b-cmp").click(); pg.wait_for_timeout(300)
+    pg.locator(".cutbtn").filter(has_text="Teaser").first.click(); pg.wait_for_timeout(400)
+    check("a cut switch leaves compare; no Compare without history", not pg.locator("#vid2").is_visible() and not J(f"{V2}.hasAttribute('src')")
+          and not pg.locator("#b-cmp").is_visible() and not J(f"{V}.muted"))
+    pg.locator(".cutbtn").filter(has_text="Carousel").first.click(); pg.wait_for_timeout(400)
+    check("no Compare on a set", not pg.locator("#b-cmp").is_visible())
+    check("no page errors (compare)", not errs)
+    if errs: print(errs)
     ctx.close(); b.close()
 
 print(f"{sum(ok)}/{len(ok)} passed")

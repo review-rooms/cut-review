@@ -1051,7 +1051,7 @@ def test_page_past_version_shows_its_video_script_items_and_notes(room_dir, caps
     notes = html.split("const notesForSel = ")[1].split(";\n")[0]
     assert "(!S.viewV || (n.version || 1) === S.viewV)" in notes
     assert 'if (S.filter === "active" && !S.viewV)' in html                      # every status on a past version
-    assert "if (moved) { selNotes = null;" in html                               # the cache follows the version
+    assert "selNotes = null; if (past) vid.pause(); }" in html                   # the cache follows the version
     assert "S.viewV = v !== undefined ? v : changed ? null : S.viewV;" in html   # another cut: back to current
 
 
@@ -1064,6 +1064,46 @@ def test_page_past_version_is_read_only(room_dir, capsys):
     assert "if (S.viewV) return;" in html.split("function pickLine(i, q)")[1].split("\n")[1]
     assert "const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false;" in html
     assert "if (S.canWrite && S.db && !S.viewV)" in html                          # no Looks right / Reopen on the past
+
+
+# ---------------------------------------------------------------- compare two versions side by side
+
+def test_page_compare_follower_gets_play_pause_seek_and_rate(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'for (const ev of ["play", "pause", "seeking", "seeked", "ratechange"]) vid.addEventListener(ev, follow);' in html
+    follow = html.split("function follow()")[1].split("\n  }\n")[0]
+    for k in ("vid2.currentTime = t", "vid2.playbackRate = vid.playbackRate", "vid2.pause()", "vid2.play()"):
+        assert k in follow
+    assert "Math.min(vid.currentTime || 0, d2 - 0.001)" in follow                # versions of different lengths: clamped
+    on_frame = html.split("const onFrame = ")[1].split("\n")[0]
+    assert "drift(" in on_frame                                                  # resynced from the per-frame loop
+    drift = html.split("function drift(t)")[1].split("\n  }\n")[0]
+    assert "> 1 / FPS" in drift and "getBoundingClientRect" not in drift and "textContent" not in drift
+
+
+def test_page_compare_has_exactly_one_unmuted_side(room_dir, capsys):
+    html = page_html(room_dir)
+    sound = html.split("function applySound()")[1].split("\n  }\n")[0]
+    assert 'vid.muted = !!S.cmp && S.cmpSound === "past";' in sound
+    assert "vid2.muted = !S.cmp || !vid.muted;" in sound                         # comparing: the other side of vid
+    assert '<video id="vid2" playsinline preload="metadata" muted></video>' in html
+
+
+def test_page_compare_only_with_kept_history_never_on_sets(room_dir, capsys):
+    html = page_html(room_dir)
+    kept = html.split("const keptOf = ")[1].split("\n")[0]
+    assert 'e?.kind === "cut"' in kept and "(e.history || []).filter((h) => h.video)" in kept
+    assert '$("b-cmp").hidden = !kept.length || !!S.viewV;' in html
+    start = html.split("function startCompare(v)")[1].split("\n  }\n")[0]
+    assert "keptOf(rawEntry(S.sel)).find((h) => +h.v === v)" in start and "if (!h || S.viewV) return;" in start
+
+
+def test_page_compare_ends_on_cut_switch_and_past_version(room_dir, capsys):
+    html = page_html(room_dir)
+    sel = html.split("function select(key, push, v)")[1].split("\n  }\n")[0]
+    assert "if (moved) { stopCompare(); selNotes = null;" in sel                 # another cut or version leaves compare
+    chip = html.split('$("cmpNotes").onclick = ')[1].split("\n")[0]
+    assert "select(S.sel, true, v)" in chip                                      # the note chip opens that version
 
 
 # ---------------------------------------------------------------- the harness can start with notes
