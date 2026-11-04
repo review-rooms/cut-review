@@ -1128,3 +1128,12 @@ def test_page_keeps_the_version_menu_on_the_title_row(room_dir, capsys):
     assert ".head .meta { flex: 1 1 0; min-width: 8em; overflow: hidden; text-overflow: ellipsis;" in wide
     assert "flex-wrap: nowrap" not in wide                          # a long sound switch must still wrap
     assert 'setAttr($("meta"), "title", facts.join(" · "));' in html   # the facts cut short are still on hover
+
+
+def test_page_cut_list_count_says_what_it_counts(room_dir, capsys):
+    html = page_html(room_dir)
+    side = html.split("for (const [key, x] of sideBtns) {")[1].split("\n    }\n")[0]
+    assert 'setText(x.count, o ? String(o) : total.get(key) ? "✓" : "");' in side
+    assert 'setAttr(x.count, "title", o ? o + (o === 1 ? " open note" : " open notes") : total.get(key) ? "Every note closed" : "");' in side
+    assert ".count.open::before {" in html and "mask: var(--bubble)" in html     # a note bubble before the number
+    assert '<span class="count open">2</span>open notes' in html and '<span class="count">✓</span>every note closed' in html

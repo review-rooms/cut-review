@@ -87,7 +87,11 @@ button { cursor: pointer; }
 .dot.approved { background: var(--good-dot); border-color: var(--good-dot); }
 .dot.changes { background: var(--fixed-dot); border-color: var(--fixed-dot); }
 .count { font: 500 11px var(--mono); color: var(--faint); }
-.count.open { color: var(--open); }
+.count.open { color: var(--open); display: inline-flex; align-items: center; gap: 3px; }
+/* open notes: a note bubble before the number */
+.count.open::before { content: ""; width: 11px; height: 11px; flex: none; background: currentColor;
+  -webkit-mask: var(--bubble) center / contain no-repeat; mask: var(--bubble) center / contain no-repeat; }
+:root { --bubble: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 2h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7l-3.5 2.8V12H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z'/%3E%3C/svg%3E"); }
 .legend { margin-top: auto; padding: 16px 10px 4px; color: var(--faint); font-size: 11px; display: flex; flex-direction: column; gap: 5px; }
 .legend div { display: flex; gap: 6px; align-items: center; }
 .legend .dot + span { margin-right: 6px; }
@@ -359,6 +363,7 @@ button { cursor: pointer; }
       <div><span class="dot changes"></span>Needs changes</div>
       <div><span class="dot approved"></span><span>Approved</span><span class="dot"></span>Unreviewed</div>
       <div><span class="count open">2</span>open notes</div>
+      <div><span class="count">✓</span>every note closed</div>
     </div>
   </nav>
 
@@ -552,6 +557,7 @@ button { cursor: pointer; }
       const o = open.get(key) || 0;
       setCls(x.count, "count" + (o ? " open" : ""));
       setText(x.count, o ? String(o) : total.get(key) ? "✓" : "");
+      setAttr(x.count, "title", o ? o + (o === 1 ? " open note" : " open notes") : total.get(key) ? "Every note closed" : "");
       if (o) setAttr(x.b, "aria-label", x.title + " · " + o + " open"); else if (x.b.hasAttribute("aria-label")) x.b.removeAttribute("aria-label");
     }
   }
