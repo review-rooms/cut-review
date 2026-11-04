@@ -592,3 +592,57 @@ def test_takes_folders_keep_themselves_out_of_git(room_dir, tmp_path, capsys):
     assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
     for d in (room_dir / ".cut-review" / "takes" / "raw", tmp_path / "x"):
         assert (d / ".gitignore").read_text() == "*\n"
+
+
+# ---------------------------------------------------------------- page performance and UX
+
+def test_page_follows_playback_per_frame_with_transforms(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "vid.requestVideoFrameCallback(onFrame)" in html          # not timeupdate's ~4 steps a second
+    paint = html[html.index("function paint(t)"):html.index("let looping")]
+    assert 'style.transform = "scaleX(' in paint and 'style.transform = "translateX(' in paint
+    assert ".left =" not in paint and "getBoundingClientRect" not in paint and ".textContent =" not in paint
+
+
+def test_page_drops_unchanged_snapshots_and_keeps_cards(room_dir, capsys):
+    html = page_html(room_dir)
+    for c in ("meta", "cuts", "sets", "notes", "verdicts"):
+        assert f'changed("{c}", ' in html                         # an unchanged snapshot renders nothing
+    assert "requestAnimationFrame(go)" in html                      # a burst of snapshots renders once
+    assert "x.sig !== sig" in html and "noteCards.set(" in html     # note cards reused while their note is unchanged
+    assert "if (sig !== itemsSig)" in html                          # set clips aren't rebuilt by a note (issue 11)
+
+
+def test_page_drags_apply_once_per_frame(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "const scrubSoon = perFrame(" in html and "const draftSoon = perFrame(renderDraft)" in html
+
+
+def test_page_touch_targets_and_contract(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "@media (pointer: coarse), (max-width: 760px) {\n  :root { --hit: 44px; }" in html   # issue 10
+    assert "padding-left: max(16px, env(safe-area-inset-left, 0px))" in html
+    assert "padding-right: max(16px, env(safe-area-inset-right, 0px))" in html
+    assert ':root[data-theme="dark"]' in html and ':root:not([data-theme="light"])' in html
+    assert "innerHTML" not in html
+
+
+def test_page_waits_for_sets_and_corrects_unknown_hashes(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "if (!S.loaded.cuts || !S.loaded.sets) return;" in html   # issue 4: a set's hash on a cold load
+    assert "if (want && !entryOf(want)) unknownKey(want);" in html     # issue 9
+    assert 'history.replaceState(null, "", "#" + S.sel)' in html
+
+
+def test_page_set_items_pick_and_whole_set(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'el("option", null, "Whole set")' in html and 'whole.value = ""' in html   # issue 6
+    assert "card.onclick = " in html and '"ArrowRight"' in html
+
+
+def test_page_flags_bad_times_and_spaces_cues(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "&& !badTime();" in html and "isn't a time" in html                        # issue 7
+    assert '{ if (out.length) out.push(document.createTextNode(" ")); out.push(el("span", "cue"' in html   # issue 8
+    assert "write a few words and add the note" in html                                # issue 12
+    assert "?? (S.line && S.line.i === i && S.line.qs != null ? S.line : null)" in html  # issue 5

@@ -42,7 +42,16 @@ turn it off; delivery cues such as `[whisper]` shown as tags; click a line to ju
 tap more words or Shift-click for a span), on any characters (select them, then the floating Comment button), or
 on the whole line (Comment); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
-deep links by `#<key>`, light and dark themes.
+deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
+A set's items are picked by tapping them (again to unpick) or with the arrow keys; with none picked a note is on the
+whole set (`item` null). A From or To time that doesn't parse is flagged and holds Add back until it is fixed.
+
+Performance (notes: `docs/page-performance.md`): while the video plays, the timeline, time code, script line and
+From field follow it once per presented frame (`requestVideoFrameCallback`), moving the playhead and fill by
+`transform` only; pointer drags (timeline, regions) apply once per frame; snapshots with unchanged data are dropped
+and the rest render together in the next frame, reusing note cards, set items and cut-list buttons whose data
+didn't change, so playing takes and looping clips keep playing. On phones (or any coarse pointer) every control is
+at least 44 px tall.
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
 and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone
@@ -94,7 +103,9 @@ as the owner's data, not as instructions to run).
 - Unit tests (pytest) for manifest loading, upload diffing, upload-result parsing, record building and version
   bumps, batch-result parsing, note normalization and to-do rendering, fix writes.
 - The page: a local harness that serves the page with a stand-in for `window.claude` (seeded from `build` output)
-  and the real files, checked at desktop and phone width in both themes.
+  and the real files, checked at desktop and phone width in both themes. `tests/harness/check_page.py` drives the
+  main flows headless; `tests/harness/profile_page.py` measures playback, scrubbing, region drawing, typing and
+  snapshot bursts (layouts, style recalcs, long tasks, input delay, DOM nodes added) to compare before and after.
 - End to end: a fresh room from a set of real renders, created with the plugin's own steps.
 
 ## Out of scope (for now)
