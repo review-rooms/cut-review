@@ -51,6 +51,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
 5. Check once: `ArtifactData` `list` of `cuts` (limit 2). Give the user the link and say how to comment: pause on a
    frame and type (Enter saves), `n` starts a note, `,` `.` step frames, `k` plays; fill To (next to From) in the note form,
    or drag the timeline, for a note on a time range, and dragging on the picture (or "Draw region", `r`) to box the part of the frame a note is about.
+   In a set, dragging on a still image (or "Draw region", `r`, for the picked item) boxes part of that image.
    The script panel follows the video: tap a word to comment on it (more taps or Shift-click take a span), select a
    few characters for just those, or press Comment for the whole line.
 
@@ -61,12 +62,12 @@ the room project next to the work that renders the videos; never commit `.cut-re
    note's database version, so save that text to `.cut-review/export-result.txt`. Then
    `cut-review notes .cut-review/export --result .cut-review/export-result.txt` prints the to-do list grouped by
    cut, with timecodes (`0:05.0–0:09.5` for a range), regions (`[region x 18% y 23%, 47%×21%]`, fractions of the
-   frame), script lines (`[script line 3, on “the quoted words”]`, then the line as the room has it now with the
+   frame, or of the still for a set item), script lines (`[script line 3, on “the quoted words”]`, then the line as the room has it now with the
    exact words in «guillemets», so a word that occurs twice is unambiguous) and
    note ids, and keeps each note's database version for `fix`. A script note is about the words, so fix the script
    (and re-record the voice) rather than the picture.
 2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame
-   of a range; a note's region is boxed in red). Read the images before changing anything, so you fix what the
+   of a range; a note's region is boxed in red), and the still behind each set note with a region, boxed the same way. Read the images before changing anything, so you fix what the
    owner pointed at: the whole range, and inside the box.
 3. Change the source (render script, edit, assets) and re-render the affected cuts. Check a frame or two of the
    new render the same way.

@@ -187,8 +187,9 @@ button { cursor: pointer; }
 
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
 .item { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; }
-.item .media { background: var(--stage); }
+.item .media { position: relative; background: var(--stage); }
 .item img, .item video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.item img { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
 .item .cap { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 10px; font-size: 13px; }
 .item[aria-current="true"] { outline: 2px solid var(--accent); }
 
@@ -376,7 +377,6 @@ button { cursor: pointer; }
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
     $("generalLbl").hidden = isSet;
-    $("b-region").hidden = isSet;
     if (changed) { S.stampEnd = null; S.region = null; S.focus = null; S.line = null; renderLineTarget(); hideSelBtn(); setDrawing(false); }
     $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
     if (changed) { $("composerHint").textContent = "Enter adds the note. Shift+Enter for a new line."; S.item = null; }
@@ -716,14 +716,16 @@ button { cursor: pointer; }
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && S.drawing) { ev.preventDefault(); setDrawing(false); return; }
     const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || "");
-    if (typing || entryOf(S.sel)?.kind !== "cut" || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const kind = entryOf(S.sel)?.kind;
+    if (typing || !kind || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.key === "r") { ev.preventDefault(); if (!$("b-region").hidden) $("b-region").click(); return; }
+    if (kind !== "cut") return;
     if (ev.key === "k") { ev.preventDefault(); $("b-play").click(); }
     else if (ev.key === ",") { ev.preventDefault(); $("b-back").click(); }
     else if (ev.key === ".") { ev.preventDefault(); $("b-fwd").click(); }
     else if (ev.key === "n") { ev.preventDefault(); vid.pause(); $("noteText").focus(); }
     else if (ev.key === "i") { ev.preventDefault(); $("b-restamp").click(); }
     else if (ev.key === "o") { ev.preventDefault(); $("b-end").click(); }
-    else if (ev.key === "r") { ev.preventDefault(); $("b-region").click(); }
   });
 
   // ---------- composer
@@ -737,7 +739,8 @@ button { cursor: pointer; }
       $(id).value = v == null ? "" : fmt(v); $(id).removeAttribute("aria-invalid");
     }
     $("b-unrange").hidden = !ranged;
-    $("b-unregion").hidden = isSet || !S.region;
+    $("b-region").hidden = !regionable();
+    $("b-unregion").hidden = !S.region;
     $("b-region").setAttribute("aria-pressed", String(S.drawing));
     $("b-add").disabled = !S.db || !S.canWrite || !S.sel || !$("noteText").value.trim();
   }
@@ -799,7 +802,7 @@ button { cursor: pointer; }
       cut: e.key, text, status: "open", reply: "", by: S.me || null,
       t: isSet || $("general").checked ? null : Math.round(S.stampT * 100) / 100,
       tEnd: isSet || $("general").checked || S.stampEnd == null ? null : Math.round(S.stampEnd * 100) / 100,
-      region: isSet || !S.region ? null : S.region,
+      region: !S.region || (isSet && !curItem()) ? null : S.region,
       item: isSet ? ($("itemSel").value || null) : null,
       line: isSet || !S.line ? null : S.line.i, quote: isSet || !S.line ? null : S.line.quote,
       qStart: isSet || !S.line || S.line.qs == null ? null : S.line.qs, qEnd: isSet || !S.line || S.line.qe == null ? null : S.line.qe,
@@ -816,23 +819,37 @@ button { cursor: pointer; }
     } catch (err) { onWriteError(err); updateStamp(); }
   }
 
-  // ---------- regions: boxes on the frame, as fractions of the picture (not of the letterboxed element)
+  // ---------- regions: boxes on the frame, or on a set's still image, as fractions of the picture (not of the
+  // letterboxed element). A cut has one overlay (#regions) on the video; each still in a set has its own.
   const reg = (r) => {
     if (!r || typeof r !== "object") return null;
     const c = (v) => Math.max(0, Math.min(1, +v || 0));
     const x = c(r.x), y = c(r.y), w = Math.min(c(r.w), 1 - x), h = Math.min(c(r.h), 1 - y);
     return w > 0 && h > 0 ? { x, y, w, h } : null;
   };
+  // the picture's box inside a W×H element showing an aw×ah picture with object-fit: contain
+  const fit = (W, H, aw, ah) => { const k = Math.min(W / aw, H / ah), w = aw * k, h = ah * k; return { left: (W - w) / 2, top: (H - h) / 2, w, h }; };
   function picture() {
-    const W = vid.clientWidth, H = vid.clientHeight;
     const [aw, ah] = vid.videoWidth ? [vid.videoWidth, vid.videoHeight] : ratio(entryOf(S.sel)?.aspect);
-    const k = Math.min(W / aw, H / ah), w = aw * k, h = ah * k;
-    return { left: vid.offsetLeft + (W - w) / 2, top: vid.offsetTop + (H - h) / 2, w, h };
+    const p = fit(vid.clientWidth, vid.clientHeight, aw, ah);
+    return { ...p, left: vid.offsetLeft + p.left, top: vid.offsetTop + p.top };
   }
+  // the set item a note is being written on (the one picked, else the first in the list), or null
+  const curItem = () => {
+    const e = entryOf(S.sel);
+    return e?.kind === "set" ? (e.items || []).find((it) => it.name === (S.item || $("itemSel").value)) || null : null;
+  };
+  const regionable = () => { const e = entryOf(S.sel); return e?.kind === "cut" || (e?.kind === "set" && !!curItem() && curItem().kind !== "clip"); };
+  const itemRegions = (name) => [...$("items").querySelectorAll(".regions")].find((b) => b.dataset.item === name) || null;
+  // the overlay a region is drawn on: the video's, or the picked still's
+  const surface = () => (entryOf(S.sel)?.kind === "set" ? itemRegions(curItem()?.name) : $("regions"));
   function setDrawing(on) {
-    S.drawing = !!on && entryOf(S.sel)?.kind === "cut"; S.draft = null;
-    if (S.drawing) { vid.pause(); if (S.stampEnd == null) S.stampT = vid.currentTime || 0; S.stampLocked = true; }
-    $("regions").classList.toggle("drawing", S.drawing);
+    const isCut = entryOf(S.sel)?.kind === "cut";
+    S.drawing = !!on && regionable(); S.draft = null;
+    if (S.drawing && isCut) { vid.pause(); if (S.stampEnd == null) S.stampT = vid.currentTime || 0; S.stampLocked = true; }
+    if (S.drawing && !isCut) S.item = curItem().name;   // a region belongs to the item it was drawn on
+    const on_ = S.drawing ? surface() : null;
+    for (const b of document.querySelectorAll(".regions")) b.classList.toggle("drawing", b === on_);
     updateStamp(); renderRegions();
   }
   const inWindow = (n, t) => {
@@ -840,67 +857,92 @@ button { cursor: pointer; }
     if (n.t == null) return vid.paused;
     return n.tEnd != null ? t >= n.t - pad && t <= n.tEnd + pad : Math.abs(t - n.t) <= pad;
   };
-  let regionsKey = "";
-  function renderRegions() {
-    const box = $("regions");
-    if (entryOf(S.sel)?.kind !== "cut") { box.hidden = true; regionsKey = ""; return; }
-    box.hidden = false;
-    const p = picture(), t = vid.currentTime || 0;
-    const shown = notesForSel().filter((n) => reg(n.region) &&
-      (n.id === S.focus || ((n.status === "open" || n.status === "fixed") && inWindow(n, t))));
-    const draft = reg(S.draft) || (S.drawing ? null : reg(S.region));
-    const key = [p.left, p.top, p.w, p.h, S.drawing, JSON.stringify(draft), ...shown.map((n) => n.id + n.status)].join("|");
-    if (key === regionsKey) return;
-    regionsKey = key;
+  const live = (n) => n.status === "open" || n.status === "fixed";
+  // boxes: [[class, region, label]] placed on an overlay sized to the picture p; skipped when nothing changed
+  function drawBoxes(box, p, boxes) {
+    const key = [p.left, p.top, p.w, p.h, box.classList.contains("drawing"), JSON.stringify(boxes)].join("|");
+    if (key === box.dataset.key) return;
+    box.dataset.key = key;
     Object.assign(box.style, { left: p.left + "px", top: p.top + "px", width: p.w + "px", height: p.h + "px" });
-    const place = (cls, r, label) => {
+    box.replaceChildren(...boxes.map(([cls, r, label]) => {
       const b = el("div", "box " + cls);
       Object.assign(b.style, { left: 100 * r.x + "%", top: 100 * r.y + "%", width: 100 * r.w + "%", height: 100 * r.h + "%" });
       if (label) b.append(el("span", "lbl", label));
-      box.append(b);
-    };
-    box.replaceChildren();
-    for (const n of shown) place(n.status, reg(n.region), n.t == null ? "whole cut" : fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : ""));
-    if (draft) place("draft", draft, S.draft ? null : "new note");
+      return b;
+    }));
   }
-  const at = (ev) => { const r = $("regions").getBoundingClientRect(); return [Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))]; };
+  function renderRegions() {
+    const e = entryOf(S.sel), box = $("regions");
+    const draft = reg(S.draft) || (S.drawing ? null : reg(S.region));
+    if (e?.kind === "set") {
+      box.hidden = true; delete box.dataset.key;
+      const cur = curItem()?.name;
+      for (const b of $("items").querySelectorAll(".regions")) {
+        const m = b.parentElement, img = m.querySelector("img");
+        const p = img && img.naturalWidth ? fit(m.clientWidth, m.clientHeight, img.naturalWidth, img.naturalHeight)
+          : { left: 0, top: 0, w: m.clientWidth, h: m.clientHeight };
+        const shown = notesForSel().filter((n) => n.item === b.dataset.item && reg(n.region) && (n.id === S.focus || live(n)));
+        const boxes = shown.map((n) => [n.status, reg(n.region), null]);
+        if (draft && b.dataset.item === cur) boxes.push(["draft", draft, S.draft ? null : "new note"]);
+        drawBoxes(b, p, boxes);
+      }
+      return;
+    }
+    if (e?.kind !== "cut") { box.hidden = true; delete box.dataset.key; return; }
+    box.hidden = false;
+    const t = vid.currentTime || 0;
+    const shown = notesForSel().filter((n) => reg(n.region) && (n.id === S.focus || (live(n) && inWindow(n, t))));
+    const boxes = shown.map((n) => [n.status, reg(n.region), n.t == null ? "whole cut" : fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : "")]);
+    if (draft) boxes.push(["draft", draft, S.draft ? null : "new note"]);
+    drawBoxes(box, picture(), boxes);
+  }
+  const at = (box, ev) => { const r = box.getBoundingClientRect(); return [Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))]; };
   let pen = null;
-  $("regions").addEventListener("pointerdown", (ev) => {
-    if (!S.drawing) return;
-    ev.preventDefault(); pen = at(ev); $("regions").setPointerCapture(ev.pointerId);
-  });
+  function wireRegions(box) {
+    box.addEventListener("pointerdown", (ev) => {
+      if (!S.drawing) return;
+      ev.preventDefault(); pen = at(box, ev); box.setPointerCapture(ev.pointerId);
+    });
+    box.addEventListener("pointermove", (ev) => {
+      if (!pen) return;
+      const [x, y] = at(box, ev);
+      S.draft = { x: Math.min(x, pen[0]), y: Math.min(y, pen[1]), w: Math.abs(x - pen[0]), h: Math.abs(y - pen[1]) };
+      renderRegions();
+    });
+    box.addEventListener("pointerup", () => {
+      if (!pen) return;
+      pen = null;
+      const r = S.draft;
+      if (r && r.w > 0.01 && r.h > 0.01) S.region = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
+      setDrawing(false);
+      $("noteText").focus();
+    });
+  }
+  wireRegions($("regions"));
   // dragging on the picture draws a region without pressing "Draw region" first; a plain click stays the
-  // player's, and the bottom strip is left to the native controls
+  // picture's (the player's, or nothing on a still). ok(ev) says whether this press may start one; begin() runs first.
   let press = null;
-  vid.addEventListener("pointerdown", (ev) => {
-    press = null;
-    if (S.drawing || !ev.isPrimary || ev.button !== 0 || entryOf(S.sel)?.kind !== "cut") return;
-    if (ev.clientY > vid.getBoundingClientRect().bottom - 48) return;
-    press = { x: ev.clientX, y: ev.clientY, start: at(ev) };
-  });
-  vid.addEventListener("pointermove", (ev) => {
-    if (!press || Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < 6) return;
-    ev.preventDefault();
-    setDrawing(true);
-    pen = press.start; press = null;
-    $("regions").setPointerCapture(ev.pointerId);
-    $("regions").dispatchEvent(new PointerEvent("pointermove", ev));
-  });
-  for (const type of ["pointerup", "pointercancel"]) vid.addEventListener(type, () => { press = null; });
-  $("regions").addEventListener("pointermove", (ev) => {
-    if (!pen) return;
-    const [x, y] = at(ev);
-    S.draft = { x: Math.min(x, pen[0]), y: Math.min(y, pen[1]), w: Math.abs(x - pen[0]), h: Math.abs(y - pen[1]) };
-    renderRegions();
-  });
-  $("regions").addEventListener("pointerup", () => {
-    if (!pen) return;
-    pen = null;
-    const r = S.draft;
-    if (r && r.w > 0.01 && r.h > 0.01) S.region = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
-    setDrawing(false);
-    $("noteText").focus();
-  });
+  function dragToDraw(target, box, ok, begin) {
+    target.addEventListener("pointerdown", (ev) => {
+      press = null;
+      if (S.drawing || !ev.isPrimary || ev.button !== 0 || !ok(ev)) return;
+      press = { target, x: ev.clientX, y: ev.clientY, start: at(box, ev) };
+    });
+    target.addEventListener("pointermove", (ev) => {
+      if (!press || press.target !== target || Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < 6) return;
+      ev.preventDefault();
+      const start = press.start; press = null;
+      if (begin) begin();
+      setDrawing(true);
+      if (!S.drawing) return;
+      pen = start;
+      box.setPointerCapture(ev.pointerId);
+      box.dispatchEvent(new PointerEvent("pointermove", ev));
+    });
+    for (const type of ["pointerup", "pointercancel"]) target.addEventListener(type, () => { press = null; });
+  }
+  // the bottom strip of the video is left to the native controls
+  dragToDraw(vid, $("regions"), (ev) => entryOf(S.sel)?.kind === "cut" && ev.clientY <= vid.getBoundingClientRect().bottom - 48);
 
   // ---------- notes
   const STATUS_LABEL = { open: "Open", fixed: "Fixed, check it", resolved: "Resolved", wontfix: "Won't fix" };
@@ -935,6 +977,7 @@ button { cursor: pointer; }
     S.focus = n.id;
     if (n.t != null) seek(n.t, true); else vid.pause();
     for (const c of $("notes").querySelectorAll(".note")) c.classList.toggle("focus", c.dataset.id === n.id);
+    if (n.item) [...$("items").children].find((c) => c.dataset.item === n.item)?.scrollIntoView({ block: "nearest", behavior: glide() });
     renderRegions();
   }
   function renderNotes() {
@@ -955,7 +998,7 @@ button { cursor: pointer; }
       if (n.t != null) { const b = el("button", "t mono", fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : "")); b.onclick = () => focusNote(n); top.append(b); }
       else if (n.item) top.append(el("span", "t mono", n.item));
       else top.append(el("span", "t", isSet ? "whole set" : "whole cut"));
-      if (!isSet && reg(n.region)) { const b = el("button", "t", "▭ region"); b.title = "Show the region on the frame"; b.onclick = () => focusNote(n); top.append(b); }
+      if (reg(n.region)) { const b = el("button", "t", "▭ region"); b.title = isSet ? "Show the region on the image" : "Show the region on the frame"; b.onclick = () => focusNote(n); top.append(b); }
       if (!isSet && n.line != null) { const b = el("button", "t", "¶ line " + (+n.line + 1)); b.title = "Show the line in the script"; b.onclick = () => { focusNote(n); showLine(+n.line); }; top.append(b); }
       top.append(el("span", "pill " + n.status, STATUS_LABEL[n.status] || n.status));
       top.append(el("span", "who", (n.by && n.by === S.me ? "You" : "Reviewer") + " · on v" + (n.version || 1)));
@@ -1003,22 +1046,39 @@ button { cursor: pointer; }
     const [w, h] = ratio(e.aspect || "4:5");
     for (const it of e.items || []) {
       const o = el("option", null, it.name); o.value = it.name; sel.append(o);
-      const card = el("div", "item"); card.setAttribute("aria-current", String(S.item === it.name));
+      const card = el("div", "item"); card.dataset.item = it.name; card.setAttribute("aria-current", String(S.item === it.name));
       const media = el("div", "media"); media.style.aspectRatio = w + " / " + h;
       if (it.kind === "clip") { const v = el("video"); v.src = it.url; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.controls = true; media.append(v); }
-      else { const i = el("img"); i.src = it.url; i.alt = it.name; i.loading = "lazy"; media.append(i); }
+      else {
+        const i = el("img"); i.src = it.url; i.alt = it.name; i.loading = "lazy"; i.draggable = false;
+        i.addEventListener("load", () => renderRegions());
+        const rg = el("div", "regions"); rg.dataset.item = it.name; rg.setAttribute("aria-hidden", "true");
+        rg.classList.toggle("drawing", S.drawing && S.item === it.name);
+        wireRegions(rg);
+        dragToDraw(i, rg, () => true, () => pickItem(it.name));
+        media.append(i, rg);
+      }
       const cap = el("div", "cap");
       const open = S.notes.filter((n) => n.cut === e.key && n.item === it.name && n.status === "open").length;
       cap.append(el("span", "mono", it.name + (it.kind === "clip" ? " · clip" : "")), el("span", "count" + (open ? " open" : ""), open ? String(open) : ""));
       const b = el("button", "ghost", "Note");
-      b.onclick = () => { S.item = it.name; sel.value = it.name; renderItems(e); $("noteText").focus(); };
+      b.onclick = () => { pickItem(it.name); $("noteText").focus(); };
       cap.append(b);
       card.append(media, cap);
       box.append(card);
     }
     if (S.item) sel.value = S.item;
+    renderRegions();
   }
-  $("itemSel").onchange = (ev) => { S.item = ev.target.value; const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); };
+  // picking another item drops a region drawn on the last one; the cards stay (a drag may be starting on one)
+  function pickItem(name) {
+    if (name !== S.item) { S.region = null; if (S.drawing) setDrawing(false); }
+    S.item = name; $("itemSel").value = name;
+    for (const c of $("items").children) c.setAttribute("aria-current", String(c.dataset.item === name));
+    updateStamp(); renderRegions();
+  }
+  $("itemSel").onchange = (ev) => pickItem(ev.target.value);
+  if (window.ResizeObserver) new ResizeObserver(() => renderRegions()).observe($("items"));
 
   // ---------- data
   function onWriteError(err) {

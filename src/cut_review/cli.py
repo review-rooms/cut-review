@@ -319,7 +319,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--all", action="store_true", help="also list fixed, resolved and won't-fix notes")
     s.set_defaults(fn=cmd_notes)
 
-    s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (ffmpeg)")
+    s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note, and set stills with a region (ffmpeg)")
     s.add_argument("--width", type=int, default=540)
     s.set_defaults(fn=cmd_frames)
 

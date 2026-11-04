@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .room import Room, RoomError
+from .room import Room, RoomError, kind_of, set_items
 
 STATUSES = ("open", "fixed", "resolved", "wontfix")
 
@@ -186,33 +186,52 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _boxed(r: tuple[float, float, float, float] | None, width: int) -> str:
+    """The ffmpeg filter that scales a frame to `width` with the region (if any) boxed in red."""
+    vf = f"scale={width}:-2"
+    return ("drawbox=x=iw*{}:y=ih*{}:w=iw*{}:h=ih*{}:color=red@0.9:t=6,".format(*r) + vf) if r else vf
+
+
+def _safe(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(name)).strip("-") or "item"
+
+
 def extract_frames(room: Room, notes: list[dict], width: int = 540) -> list[tuple[dict, Path]]:
-    """The frames behind every open note on a cut, as PNGs in .cut-review/frames/. Needs ffmpeg.
+    """The frames behind every open note on a cut, and the stills behind open set-item notes with a region, as PNGs
+    in .cut-review/frames/. Needs ffmpeg.
 
     A timed note gives its frame; a range note gives its first and last frame; a note with a region has the region
-    boxed in red (a whole-cut note with a region uses the first frame).
+    boxed in red (a whole-cut note with a region uses the first frame). A region on a set's still is boxed on that
+    image (a set note without a region, or on a clip item, gives nothing: the file is the item itself).
     """
     if not shutil.which("ffmpeg"):
         raise RoomError("ffmpeg is not on PATH")
     files = {c["key"]: room.abspath(c["file"]) for c in room.manifest.get("cuts", [])}
+    stills = {(s["key"], it["name"]): room.abspath(it["file"])
+              for s in room.manifest.get("sets", []) for it in set_items(room, s) if kind_of(it["file"]) == "still"}
     outdir = room.state_dir / "frames"
     outdir.mkdir(parents=True, exist_ok=True)
     done = []
     for n in notes:
         r = region_of(n)
-        if n.get("status") != "open" or n["cut"] not in files or (n.get("t") is None and not r):
+        if n.get("status") != "open":
+            continue
+        if n.get("item") and r and (n["cut"], n["item"]) in stills:
+            dst = outdir / f"{n['cut']}_{_safe(n['item'])}_{n['id']}.png"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(stills[n["cut"], n["item"]]),
+                            "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
+            done.append((n, dst))
+            continue
+        if n["cut"] not in files or (n.get("t") is None and not r):
             continue
         t = float(n.get("t") or 0)
         shots = [(t, "")]
         if n.get("tEnd") is not None and float(n["tEnd"]) > t:
             shots = [(t, "_start"), (float(n["tEnd"]), "_end")]
-        vf = f"scale={width}:-2"
-        if r:
-            vf = "drawbox=x=iw*{}:y=ih*{}:w=iw*{}:h=ih*{}:color=red@0.9:t=6,".format(*r) + vf
         for at, suffix in shots:
             dst = outdir / f"{n['cut']}_{at:07.2f}_{n['id']}{suffix}.png"
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(files[n["cut"]]),
-                            "-frames:v", "1", "-vf", vf, str(dst)], check=True, timeout=60)
+                            "-frames:v", "1", "-vf", _boxed(r, width), str(dst)], check=True, timeout=60)
             done.append((n, dst))
     return done
 
