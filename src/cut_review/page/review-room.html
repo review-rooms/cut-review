@@ -370,7 +370,7 @@ button { cursor: pointer; }
       <span class="grow"></span>
       <span class="versions seg" id="versions" role="group" aria-label="Version" hidden></span>
       <select class="versel mono" id="verSel" aria-label="Version" hidden></select>
-      <button class="ghost" id="b-cmp" aria-pressed="false" title="Watch a past version beside this one" hidden>Compare</button>
+      <button class="ghost" id="b-cmp" aria-pressed="false" title="Watch this version beside the current one" hidden>Compare</button>
     </div>
     <div class="pastbar" id="pastBar" hidden><span id="pastTxt"></span><span class="grow"></span><button class="btn" id="b-current"></button></div>
     <p class="why" id="why"></p>
@@ -651,7 +651,8 @@ button { cursor: pointer; }
   }
   function renderCompare() {
     const e = rawEntry(S.sel), kept = keptOf(e);
-    $("b-cmp").hidden = !kept.length || !!S.viewV;
+    // offered only while a kept past version is open (and while comparing, to leave)
+    $("b-cmp").hidden = !S.cmp && !(S.viewV && kept.some((h) => +h.v === S.viewV));
     if (S.cmp && (!kept.some((h) => +h.v === S.cmp) || S.viewV)) { stopCompare(); return; }
     setAttr($("b-cmp"), "aria-pressed", String(!!S.cmp));
     $("pic2").hidden = $("lbl1").hidden = !S.cmp;
@@ -669,7 +670,8 @@ button { cursor: pointer; }
     if ($("stage2").style.getPropertyValue("--ar") !== ar) $("stage2").style.setProperty("--ar", ar);
     if (vid2.style.aspectRatio !== vid.style.aspectRatio) vid2.style.aspectRatio = vid.style.aspectRatio;
   }
-  $("b-cmp").onclick = () => { if (S.cmp) stopCompare(); else startCompare(+keptOf(rawEntry(S.sel))[0]?.v); setHash(); };
+  // from a past version: the current one beside it; pressed again, back to that past version
+  $("b-cmp").onclick = () => { if (S.cmp) { const v = S.cmp; stopCompare(); select(S.sel, true, v); } else if (S.viewV) { const v = S.viewV; select(S.sel, true, null); startCompare(v); } setHash(); };
   $("cmpSel").onchange = (ev) => { startCompare(+ev.target.value); setHash(); };
   $("cmpNotes").onclick = () => { const v = S.cmp; select(S.sel, true, v); };
   for (const b of [$("snd1"), $("snd2")]) b.onclick = () => { S.cmpSound = b.dataset.side; applySound(); };

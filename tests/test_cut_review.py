@@ -1093,7 +1093,10 @@ def test_page_compare_only_with_kept_history_never_on_sets(room_dir, capsys):
     html = page_html(room_dir)
     kept = html.split("const keptOf = ")[1].split("\n")[0]
     assert 'e?.kind === "cut"' in kept and "(e.history || []).filter((h) => h.video)" in kept
-    assert '$("b-cmp").hidden = !kept.length || !!S.viewV;' in html
+    # offered only while a kept past version is open (and while comparing, to leave)
+    assert '$("b-cmp").hidden = !S.cmp && !(S.viewV && kept.some((h) => +h.v === S.viewV));' in html
+    click = html.split('$("b-cmp").onclick = ')[1].split("\n")[0]
+    assert "select(S.sel, true, null); startCompare(v);" in click and "stopCompare(); select(S.sel, true, v);" in click
     start = html.split("function startCompare(v)")[1].split("\n  }\n")[0]
     assert "keptOf(rawEntry(S.sel)).find((h) => +h.v === v)" in start and "if (!h || S.viewV) return;" in start
 

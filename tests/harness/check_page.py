@@ -248,8 +248,10 @@ with sync_playwright() as p:
         history: [{ v: 2, video: t.video, poster: t.poster, script: [], length: 8, note: 'Bigger logo' }] });
     })()"""); pg.wait_for_timeout(600)
     V = "document.getElementById('vid')"; V2 = "document.getElementById('vid2')"
-    check("Compare offered on a cut with a kept version", pg.locator("#b-cmp").is_visible())
+    check("no Compare on the current version", not pg.locator("#b-cmp").is_visible())
     cur = J(f"{V}.dataset.src")
+    pg.select_option("#verSel", "2"); pg.wait_for_timeout(400)
+    check("Compare offered on a kept past version", pg.locator("#b-cmp").is_visible())
     pg.locator("#b-cmp").click(); pg.wait_for_timeout(400)
     check("compare: two pictures, the current (alt kept) and v2's video", pg.locator("#vid").is_visible() and pg.locator("#vid2").is_visible()
           and J(f"{V}.dataset.src") == cur and J(f"{V2}.getAttribute('src') === window.__old"))
@@ -288,14 +290,19 @@ with sync_playwright() as p:
     check("the chip counts v2's notes", J("document.getElementById('cmpNotes').textContent") == "2 notes")
     pg.locator("#cmpNotes").click(); pg.wait_for_timeout(500)
     check("the chip opens v2 read-only and leaves compare", J("document.getElementById('pastTxt').textContent") == "Viewing v2, read-only"
-          and not pg.locator("#vid2").is_visible() and J("location.hash") == "#explainer@v2" and not pg.locator("#b-cmp").is_visible()
+          and not pg.locator("#vid2").is_visible() and J("location.hash") == "#explainer@v2" and pg.locator("#b-cmp").is_visible()
           and J(f"{V}.dataset.src === window.__old"))
+    pg.locator("#b-cmp").click(); pg.wait_for_timeout(400)
+    check("Compare from v2 compares it with the current version", pg.locator("#vid2").is_visible() and J("document.getElementById('cmpSel').value") == "2"
+          and J("location.hash") == "#explainer@v3~v2")
+    pg.locator("#b-cmp").click(); pg.wait_for_timeout(400)
+    check("Compare again goes back to viewing v2", not pg.locator("#vid2").is_visible() and J("location.hash") == "#explainer@v2")
     pg.locator("#b-current").click(); pg.wait_for_timeout(400)
     J("location.hash = '#explainer@v3~v2'"); pg.wait_for_timeout(500)
     check("a #key@v3~v2 link opens compare", pg.locator("#vid2").is_visible() and J(f"{V2}.getAttribute('src') === window.__old"))
     pg.select_option("#verSel", "2"); pg.wait_for_timeout(400)
     check("the version menu leaves compare", not pg.locator("#vid2").is_visible() and J("document.getElementById('verSel').value") == "2")
-    pg.locator("#b-current").click(); pg.wait_for_timeout(300); pg.locator("#b-cmp").click(); pg.wait_for_timeout(300)
+    pg.locator("#b-cmp").click(); pg.wait_for_timeout(300)
     pg.locator(".cutbtn").filter(has_text="Teaser").first.click(); pg.wait_for_timeout(400)
     check("a cut switch leaves compare; no Compare without history", not pg.locator("#vid2").is_visible() and not J(f"{V2}.hasAttribute('src')")
           and not pg.locator("#b-cmp").is_visible() and not J(f"{V}.muted"))

@@ -57,9 +57,10 @@ it kept one, a set's items as they were, and only the notes written on that vers
 on the notes panel, timeline, boxes and script; the note form, the verdict and the Active/All filter are hidden, n i
 o r and taps on words start nothing, and a "Viewing v2, read-only" bar has "Back to v3". Another cut or set, or
 "Back", returns to the current version; `#<key>@v2` links to a past version. On a cut with a kept past version (never a set),
-**Compare** beside the version menu puts a past version beside the current one ("v3 · current" and "v2 · <change>",
-side by side, stacked at 760 px and below; the past one picked in its label's menu, by default the newest kept one,
-shown in the current version's frame shape). Play, pause, frame steps, speed, loop and the timeline drive both: the
+**Compare** shows beside the version menu only while a kept past version is open (and while comparing): it puts that
+version beside the current one ("v3 · current" and "v2 · <change>", side by side, stacked at 760 px and below; the past
+one can be changed in its label's menu; shown in the current version's frame shape). Pressed again, it goes back to
+that past version. Play, pause, frame steps, speed, loop and the timeline drive both: the
 past video follows the current one on its play, pause, seek and rate events, is put back from the per-frame loop when
 it drifts more than a frame, and stops at its own end when it is shorter. The transport, time and playhead are the
 current version's, and the current version stays live (notes, note form, script, verdict, boxes on its picture only).
