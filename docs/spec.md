@@ -54,7 +54,7 @@ with "Looks right" / "Still wrong", a change log per cut (the current version's 
 ones under it), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
 deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
 A set's items are picked by tapping them (again to unpick; a tap on a clip's video, or playing or pausing it with its own controls, picks it but never unpicks), with the arrow keys or from the note form's menu; with
-none picked ("Whole set") a note is on the whole set (`item` null) and has no box. A picked clip item takes a time or
+none picked ("Whole set") a note is on the whole set (`item` null) and has no box, and the note box asks what should change in this set. A picked clip item takes a time or
 range like a cut: the note form shows From and To, which follow that clip until a time is stamped; In and Out (or `i`
 / `o`), typed times and writing the note (which pauses the clip) stamp the clip's own time, and Whole clip drops it.
 A note on a clip shows its item and time (`02-clip · 0:01.0–0:02.5`), and tapping that seeks the clip there. A From or To time that doesn't

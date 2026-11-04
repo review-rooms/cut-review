@@ -530,7 +530,7 @@ button { cursor: pointer; }
       S.stampEnd = null; S.region = null; S.focus = null; S.line = null; S.item = null;
       renderLineTarget(); hideSelBtn(); setDrawing(false); clearBadTimes();
     }
-    $("noteText").placeholder = isSet ? "What should change on this item?" : "What should change here? Pausing to type stamps the current frame.";
+    notePlaceholder();
     if (changed) $("composerHint").textContent = TYPE_HINT;
     setText($("title"), e.title || e.key);
     const facts = [];
@@ -1628,7 +1628,7 @@ button { cursor: pointer; }
       setCls(x.count, "count" + (open ? " open" : ""));
       setText(x.count, open ? String(open) : "");
     }
-    if (S.item && !itemCards.has(S.item)) S.item = null;   // the item left the set
+    if (S.item && !itemCards.has(S.item)) { S.item = null; notePlaceholder(); }   // the item left the set
     sel.value = S.item || "";
     renderRegions();
   }
@@ -1636,6 +1636,11 @@ button { cursor: pointer; }
   for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => { pageInputAt = performance.now(); }, true);
   function byControls(name) {
     if (S.item !== name && navigator.userActivation?.isActive && performance.now() - pageInputAt > 400) pickItem(name);
+  }
+  function notePlaceholder() {
+    const isSet = entryOf(S.sel)?.kind === "set";
+    setAttr($("noteText"), "placeholder", !isSet ? "What should change here? Pausing to type stamps the current frame."
+      : S.item ? "What should change on this item?" : "What should change in this set?");
   }
   // one way to pick: a tap, the arrow keys, the Note button, the menu or starting a box on a still. null is the
   // whole set. Picking another item (or none) drops a region drawn on the last one; the cards stay (a drag may be
@@ -1650,7 +1655,7 @@ button { cursor: pointer; }
       S.stampT = clipVid()?.currentTime || 0;
     }
     for (const [n, x] of itemCards) setAttr(x.card, "aria-current", String(n === name));
-    updateStamp(); renderRegions();
+    notePlaceholder(); updateStamp(); renderRegions();
   }
   $("itemSel").onchange = (ev) => pickItem(ev.target.value || null);
   if (window.ResizeObserver) new ResizeObserver(() => renderRegions()).observe($("items"));

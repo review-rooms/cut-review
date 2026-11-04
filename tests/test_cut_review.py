@@ -789,6 +789,14 @@ def test_page_take_players_are_touch_targets(room_dir, capsys):
     assert ".take audio, .note audio { height: var(--hit); }" in coarse
 
 
+def test_page_set_placeholder_follows_the_pick(room_dir, capsys):
+    # with nothing picked a note is on the whole set, and the note box says so
+    html = page_html(room_dir)
+    assert '"What should change in this set?"' in html
+    assert "notePlaceholder();" in html.split("function pickItem(name)")[1].split("\n  }\n")[0]
+    assert '$("noteText").placeholder = isSet ? "What should change on this item?"' not in html
+
+
 # ---------------------------------------------------------------- issue 14: init gives each cut and set its own key
 def test_init_gives_colliding_names_unique_keys(tmp_path, capsys):
     media = tmp_path / "media"
