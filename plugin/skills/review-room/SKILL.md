@@ -67,7 +67,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    cut, with timecodes (`0:05.0–0:09.5` for a range), regions (`[region x 18% y 23%, 47%×21%]`, fractions of the
    frame, or of the still for a set item), script lines (`[script line 3, on “the quoted words”]`, then the line as the room has it now with the
    exact words in «guillemets», so a word that occurs twice is unambiguous) and
-   note ids, and keeps each note's database version for `fix`. A script note is about the words, so fix the script
+   note ids, and keeps each note's database version for `fix`. If it says `no such file or folder`, the export or result path is wrong (nothing was saved); fix the path, don't treat it as no notes. A script note is about the words, so fix the script
    (and re-record the voice) rather than the picture. A `take:` row under a script note means the owner recorded
    how the line should sound: see "Notes with a voice take".
 2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame

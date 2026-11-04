@@ -820,3 +820,20 @@ def test_saved_notes_and_note_versions_reject_a_malformed_notes_file(room_dir):
         saved_notes(room)
     with pytest.raises(RoomError, match="notes.json"):
         set_note_version(room, "n1", 2)
+
+
+# ---------------------------------------------------------------- issue 16: notes on a missing path
+def test_notes_command_rejects_a_missing_export(room_dir, tmp_path, capsys):
+    missing = tmp_path / "does" / "not" / "exist.json"
+    assert run(room_dir, "notes", str(missing)) == 1
+    err = capsys.readouterr().err
+    assert f"no such file or folder: {missing}" in err and "no notes found" not in err
+    assert not (room_dir / ".cut-review" / "notes.json").exists()
+
+
+def test_notes_command_rejects_a_missing_result_without_saving(room_dir, tmp_path, capsys):
+    e = export(tmp_path, {"n1": {"cut": "poll", "t": 9.2, "text": "Late", "status": "open", "version": 1}})
+    missing = tmp_path / "result.txt"
+    assert run(room_dir, "notes", str(e), "--result", str(missing)) == 1
+    assert f"no such file or folder: {missing}" in capsys.readouterr().err
+    assert not (room_dir / ".cut-review" / "notes.json").exists()

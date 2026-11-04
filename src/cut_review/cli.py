@@ -219,6 +219,9 @@ def cmd_written(a) -> int:
 
 def cmd_notes(a) -> int:
     room = Room.load(a.room)
+    for p in (a.export, a.result):   # check both before anything is read or saved
+        if p and p != "-" and not Path(p).exists():
+            raise RoomError(f"no such file or folder: {p}")
     notes = load_export(a.export)
     if not notes:
         raise RoomError(f"no notes found in {a.export}")
