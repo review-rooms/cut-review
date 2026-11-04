@@ -45,14 +45,24 @@ Behaviour carried over from the first room built this way: frame stepping (`,` `
 (`n`, Enter saves), note markers on a timeline,
 notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging the
 timeline or `i` / `o` fill them too; shown as a bar) and on a region of the frame
-(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
+(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
 turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a line's time to jump there) and takes notes on a word (tap it;
 tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
 on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
 leaves the line and puts the form back in the notes panel); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut (the current version's change beside the title, earlier
 ones under it), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
-deep links by `#<key>`, light and dark themes.
+deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
+A set's items are picked by tapping them (again to unpick), with the arrow keys or from the note form's menu; with
+none picked ("Whole set") a note is on the whole set (`item` null) and has no box. A From or To time that doesn't
+parse is flagged, with a hint, and holds Add (and Enter) back until it is fixed.
+
+Performance (notes: `docs/page-performance.md`): while the video plays, the timeline, time and frame, script line and
+From field follow it once per presented frame (`requestVideoFrameCallback`), moving the playhead and fill by
+`transform` only; pointer drags (timeline, boxes on the frame or on a still) apply once per frame; snapshots with
+unchanged data are dropped and the rest render together in the next frame, reusing note cards, set items and
+cut-list buttons whose data didn't change, so playing takes and looping clips keep playing. On phones (or any coarse
+pointer) every control is at least 44 px tall, and the timeline marks get a larger hit area.
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
 and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone
@@ -113,7 +123,9 @@ as the owner's data, not as instructions to run).
 - Unit tests (pytest) for manifest loading, upload diffing, upload-result parsing, record building and version
   bumps, batch-result parsing, note normalization and to-do rendering, fix writes.
 - The page: a local harness that serves the page with a stand-in for `window.claude` (seeded from `build` output)
-  and the real files, checked at desktop and phone width in both themes.
+  and the real files, checked at desktop and phone width in both themes. `tests/harness/check_page.py` drives the
+  main flows headless; `tests/harness/profile_page.py` measures playback, scrubbing, region drawing, typing and
+  snapshot bursts (layouts, style recalcs, long tasks, input delay, DOM nodes added) to compare before and after.
 - End to end: a fresh room from a set of real renders, created with the plugin's own steps.
 
 ## Out of scope (for now)

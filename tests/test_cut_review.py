@@ -703,3 +703,67 @@ def test_takes_with_only_local_recordings_needs_no_linked_room(room_dir, tmp_pat
     (room_dir / ".cut-review" / "takes" / "local" / "loc.webm").write_bytes(b"x")
     from cut_review.takes import local_file
     assert local_file(Room.load(room_dir), {"id": "loc"}).name == "loc.webm"
+
+
+# ---------------------------------------------------------------- page performance and UX
+
+def test_page_follows_playback_per_frame_with_transforms(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "vid.requestVideoFrameCallback(onFrame)" in html          # not timeupdate's ~4 steps a second
+    paint = html[html.index("function paint(t)"):html.index("let looping")]
+    assert 'style.transform = "scaleX(' in paint and 'style.transform = "translateX(' in paint
+    assert ".left =" not in paint and "getBoundingClientRect" not in paint and ".textContent =" not in paint
+
+
+def test_page_drops_unchanged_snapshots_and_keeps_cards(room_dir, capsys):
+    html = page_html(room_dir)
+    for c in ("meta", "cuts", "sets", "notes", "verdicts"):
+        assert f'changed("{c}", ' in html                         # an unchanged snapshot renders nothing
+    assert "requestAnimationFrame(go)" in html                      # a burst of snapshots renders once
+    assert "x.sig !== sig" in html and "noteCards.set(" in html     # note cards reused while their note is unchanged
+    assert "if (sig !== itemsSig)" in html                          # set clips aren't rebuilt by a note (issue 11)
+
+
+def test_page_drags_apply_once_per_frame(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "const scrubSoon = perFrame(" in html and "const draftSoon = perFrame(renderDraft)" in html
+
+
+def test_page_touch_targets_and_contract(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "@media (pointer: coarse), (max-width: 760px) {\n  :root { --hit: 44px; }" in html and ".note button.t, .note .acts .btn { min-height: var(--hit); }" in html   # issue 10
+    assert "padding-left: max(16px, env(safe-area-inset-left, 0px))" in html
+    assert "padding-right: max(16px, env(safe-area-inset-right, 0px))" in html
+    assert ':root[data-theme="dark"]' in html and ':root:not([data-theme="light"])' in html
+    assert "innerHTML" not in html
+
+
+def test_page_waits_for_sets_and_corrects_unknown_hashes(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "if (!S.loaded.cuts || !S.loaded.sets) return;" in html   # issue 4: a set's hash on a cold load
+    assert "if (want && !entryOf(want)) unknownKey(want);" in html     # issue 9
+    assert 'history.replaceState(null, "", "#" + S.sel)' in html
+
+
+def test_page_set_items_pick_and_whole_set(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'el("option", null, "Whole set")' in html and 'whole.value = ""' in html   # issue 6
+    assert "card.onclick = " in html and '"ArrowRight"' in html
+
+
+def test_page_flags_bad_times_and_spaces_cues(room_dir, capsys):
+    html = page_html(room_dir)
+    assert "&& !badTime();" in html and "isn't a time" in html                        # issue 7
+    assert '{ if (out.length) out.push(document.createTextNode(" ")); out.push(el("span", "cue"' in html   # issue 8
+    assert "write a few words and add the note" in html                                # issue 12
+    assert "?? (S.line && S.line.i === i && S.line.qs != null ? S.line : null)" in html  # issue 5
+
+
+def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_dir, capsys):
+    # the merge of #17 (boxes on stills) with #18 (tap to pick or unpick): one pickItem, where null is the whole set
+    html = page_html(room_dir)
+    pick = html[html.index("function pickItem(name)"):]
+    assert "name = name || null;" in pick and "if (name !== S.item) { S.region = null;" in pick   # unpick drops a box
+    assert 'return e?.kind === "set" && S.item ? (e.items || []).find' in html   # none picked: no item, so no Box
+    assert "performance.now() - drewAt < 400" in html          # the click that ends a box on a still doesn't unpick
+    assert "drewAt = performance.now()" in html
