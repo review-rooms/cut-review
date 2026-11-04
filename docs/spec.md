@@ -33,15 +33,25 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `take` (null, or `{asset, seconds, type}`: a voice take of how the line should sound, only on notes with `line`; `asset` is the asset id (32 hex), `seconds` its length, `type` the stored content type, `video/mp4` or `video/webm`; `cut-review notes` shows it as a `take:` row), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
 
-Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
+Layout ("script under the picture", from the Claude Design board *Review Room Layouts*, option 1b): a top bar with the
+room's title; the cut list on the left (one line per cut: verdict dot, name, open-note count; a chip row on phones);
+the player in the middle with the cut's title, facts, version switch and change log above it, a transport row
+(play, frame steps, time and frame, the note timeline, speed, loop, download) under it, and the script following
+along beneath; notes on the right with the note form docked under them and the verdict (Needs changes, Approve vN)
+at the foot. Below 1180 px the notes go under the picture and the page scrolls as one. One blue for open, amber for
+fixed and needs changes, green for resolved and approved, grey for won't fix; Geist and Geist Mono.
+
+Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`, or click the picture), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
 (`n`, Enter saves), note markers on a timeline,
-notes on a time range (the composer's From and To fields, typed or set to the current frame with Now; dragging the
+notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging the
 timeline or `i` / `o` fill them too; shown as a bar) and on a region of the frame
-(drag a box on the picture, or `r` / "Draw region" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item drops an unsaved box), notes filter (open + fixed, all), a script that follows the video (the current line highlighted and kept in view, Follow to
-turn it off; delivery cues such as `[whisper]` shown as tags; click a line to jump there) and takes notes on a word (tap it;
-tap more words or Shift-click for a span), on any characters (select them, then the floating Comment button), or
-on the whole line (Comment); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
-with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
+(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
+turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a line's time to jump there) and takes notes on a word (tap it;
+tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
+on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
+leaves the line and puts the form back in the notes panel); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
+with "Looks right" / "Still wrong", a change log per cut (the current version's change beside the title, earlier
+ones under it), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
 deep links by `#<key>`, light and dark themes.
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
