@@ -1,8 +1,9 @@
 """Parsers for the text Claude's tools return, so a session can hand a tool result straight to the CLI."""
 from __future__ import annotations
 
-import json
 import re
+
+from .room import RoomError, load_json
 
 # Artifact asset upload, one line per file:
 #   - "/abs/path/poll.mp4" (4640162 bytes, video/mp4) → "/_blob/156dc67f538f092e0093aff2ca858328" (id 156dc…)
@@ -26,9 +27,11 @@ def parse_assets(text: str) -> dict[str, str]:
     """{path: asset id} from an upload result, or from JSON `{path: id}` / `[{path, id}]`."""
     t = text.strip()
     if t.startswith("{") or t.startswith("["):
-        data = json.loads(t)
+        data = load_json(t, "the upload result")
         if isinstance(data, dict):
             return {str(k): _blob_id(str(v)) for k, v in data.items()}
+        if not all(isinstance(x, dict) and "path" in x and "id" in x for x in data):
+            raise RoomError("the upload result is a JSON list, but not of {path, id} objects")
         return {str(x["path"]): _blob_id(str(x["id"])) for x in data}
     return {m["path"]: m["id"] for m in _ASSET.finditer(text)}
 
