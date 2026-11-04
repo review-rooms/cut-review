@@ -18,7 +18,7 @@ from . import __version__
 from .notes import extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
-from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, sha256
+from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, sha256
 from .takes import convert, local_file, open_script_notes, private_dir, raw_file, read_call, take_of, take_row, wav_name
 
 UPLOAD_BATCH = 25          # Artifact asset upload: at most 25 files per call
@@ -271,8 +271,13 @@ def cmd_fix(a) -> int:
     room = Room.load(a.room)
     replies: dict[str, str] = {}
     if a.source:
-        data = json.loads(_read(a.source))
-        replies = {x["id"]: x["reply"] for x in data} if isinstance(data, list) else {str(k): str(v) for k, v in data.items()}
+        data = load_json(_read(a.source), a.source)
+        if isinstance(data, dict):
+            replies = {str(k): str(v) for k, v in data.items()}
+        elif isinstance(data, list) and all(isinstance(x, dict) and "id" in x and "reply" in x for x in data):
+            replies = {str(x["id"]): str(x["reply"]) for x in data}
+        else:
+            raise RoomError(f"{a.source}: expected {{id: reply}} or [{{id, reply}}]")
     for pair in a.pairs or []:
         nid, sep, reply = pair.partition("=")
         if not sep or not reply.strip():
@@ -305,7 +310,7 @@ def cmd_status(a) -> int:
             print(line)
     p = room.state_dir / "notes.json"
     if p.exists():
-        notes = json.loads(p.read_text())
+        notes = saved_notes(room)
         print(f"Notes (last export): {sum(n.get('status') == 'open' for n in notes)} open of {len(notes)}")
     return 0
 

@@ -45,6 +45,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`, a one-line `description`. Then `cut-review link <url>`.
 3. `cut-review uploads` prints the files to upload in calls of at most 25. For each call: `Artifact` with `url`,
    `asset: true`, `file_paths` = that list. Save the tool's result text to a file and run `cut-review assets <file>`.
+   If it answers `cut-review: ... is not valid JSON`, the saved text was cut or edited: save the tool's result again, unchanged.
    (Each binary file must be 15 MB or less; re-encode bigger ones.)
 4. `cut-review build` writes every record and prints `ArtifactData` `batch` writes (`writes` = the printed list,
    `url` = the room). Save the result to a file and run `cut-review written <file>`.

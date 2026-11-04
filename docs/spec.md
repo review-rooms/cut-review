@@ -93,6 +93,10 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
 
+A command that fails prints one line, `cut-review: <reason>`, to stderr and exits 1, never a traceback; that includes
+input or state that is not valid JSON or not the expected shape (an upload result, a `fix --from` file, `.cut-review/state.json`,
+`.cut-review/notes.json`), named with where it breaks.
+
 ### 2b. The local recorder (`recorder/`, experimental)
 
 claude.ai pages can't use the microphone, so `recorder/server.py` (standard library, run in Docker or directly)

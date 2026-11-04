@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .room import Room, RoomError, kind_of, set_items
+from .room import Room, RoomError, kind_of, load_json, set_items
 
 STATUSES = ("open", "fixed", "resolved", "wontfix")
 
@@ -157,14 +157,17 @@ def saved_notes(room: Room) -> list[dict]:
     p = room.state_dir / "notes.json"
     if not p.exists():
         raise RoomError("no notes saved yet (export them with ArtifactData and run `cut-review notes DIR`)")
-    return json.loads(p.read_text())
+    notes = load_json(p.read_text(), str(p))
+    if not isinstance(notes, list):
+        raise RoomError(f"{p} is not a JSON list of notes")
+    return notes
 
 
 def set_note_version(room: Room, note_id: str, version: int | None) -> bool:
     p = room.state_dir / "notes.json"
     if not p.exists() or version is None:
         return False
-    notes = json.loads(p.read_text())
+    notes = saved_notes(room)
     hit = False
     for n in notes:
         if n["id"] == note_id:

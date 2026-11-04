@@ -767,3 +767,42 @@ def test_page_set_items_unpick_drops_the_box_and_drawing_does_not_unpick(room_di
     assert 'return e?.kind === "set" && S.item ? (e.items || []).find' in html   # none picked: no item, so no Box
     assert "performance.now() - drewAt < 400" in html          # the click that ends a box on a still doesn't unpick
     assert "drewAt = performance.now()" in html
+
+
+# ---------------------------------------------------------------- issue 15: malformed JSON is a one-line error
+@pytest.mark.parametrize("text", ["{bad", "[1, 2]", '[{"path": "x"}]', "[oops"])
+def test_assets_rejects_malformed_json_without_a_traceback(room_dir, capsys, monkeypatch, text):
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    assert run(room_dir, "assets", "-") == 1
+    err = capsys.readouterr().err
+    assert err.startswith("cut-review: ") and err.count("\n") == 1 and "Traceback" not in err
+
+
+@pytest.mark.parametrize("text", ["{bad", "42", '[{"id": "a"}]', '["a"]'])
+def test_fix_from_rejects_malformed_json_without_a_traceback(room_dir, capsys, text):
+    src = room_dir / "replies.json"
+    src.write_text(text)
+    assert run(room_dir, "fix", "--from", str(src)) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("cut-review: ") and err.count("\n") == 1 and "replies.json" in err
+
+
+@pytest.mark.parametrize("name", ["state.json", "notes.json"])
+def test_malformed_state_files_are_a_one_line_error(room_dir, capsys, name):
+    (room_dir / ".cut-review").mkdir()
+    (room_dir / ".cut-review" / name).write_text("{bad")
+    assert run(room_dir, "status") == 1
+    err = capsys.readouterr().err
+    assert err.startswith("cut-review: ") and name in err and err.count("\n") == 1
+
+
+def test_saved_notes_and_note_versions_reject_a_malformed_notes_file(room_dir):
+    from cut_review.notes import saved_notes, set_note_version
+    (room_dir / ".cut-review").mkdir()
+    (room_dir / ".cut-review" / "notes.json").write_text("{bad")
+    room = Room.load(room_dir)
+    with pytest.raises(RoomError, match="notes.json"):
+        saved_notes(room)
+    with pytest.raises(RoomError, match="notes.json"):
+        set_note_version(room, "n1", 2)

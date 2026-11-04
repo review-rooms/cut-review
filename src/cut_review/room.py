@@ -19,6 +19,14 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MEDIA_EXT = VIDEO_EXT | IMAGE_EXT
 
 
+def load_json(text: str, source: str):
+    """Parse JSON, or raise RoomError naming `source` (a file, or "the input") with where it breaks."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise RoomError(f"{source} is not valid JSON: {e}") from None
+
+
 class RoomError(Exception):
     """A problem the person running the command can fix (missing file, bad manifest, unknown note)."""
 
@@ -49,13 +57,12 @@ class Room:
         mpath = d / MANIFEST
         if not mpath.exists():
             raise RoomError(f"no {MANIFEST} in {d} (run `cut-review init` first)")
-        try:
-            manifest = json.loads(mpath.read_text())
-        except json.JSONDecodeError as e:
-            raise RoomError(f"{mpath} is not valid JSON: {e}") from e
+        manifest = load_json(mpath.read_text(), str(mpath))
         validate_manifest(manifest)
         spath = d / STATE_DIR / "state.json"
-        state = json.loads(spath.read_text()) if spath.exists() else {}
+        state = load_json(spath.read_text(), str(spath)) if spath.exists() else {}
+        if not isinstance(state, dict):
+            raise RoomError(f"{spath} is not a JSON object")
         state.setdefault("artifact", None)
         state.setdefault("files", {})
         state.setdefault("records", {})
