@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import subprocess
 import sys
 from importlib import resources
 from pathlib import Path
@@ -18,6 +19,7 @@ from .notes import extract_frames, fix_writes, load_export, save_notes, saved_no
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, sha256
+from .takes import convert, open_takes, private_dir, raw_file, read_call, take_row, wav_name
 
 UPLOAD_BATCH = 25          # Artifact asset upload: at most 25 files per call
 UPLOAD_MAX_BYTES = 15 << 20  # and at most 15 MB per binary file
@@ -232,6 +234,38 @@ def cmd_frames(a) -> int:
     return 0
 
 
+def cmd_takes(a) -> int:
+    room = Room.load(a.room)
+    takes = open_takes(saved_notes(room), {c["key"] for c in room.manifest.get("cuts", [])})
+    if not takes:
+        print("No open notes with a take.")
+        return 0
+    out = private_dir(Path(a.out) if a.out else room.state_dir / "takes")
+    rows, reads, failed = [], [], 0
+    for n, t in takes:
+        src = raw_file(room, t)
+        if not src:
+            reads.append(read_call(room, t))
+            continue
+        row = take_row(room, n)
+        wav = out / wav_name(row)
+        try:
+            secs = convert(src, wav)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            failed += 1
+            print(f"cut-review: couldn't convert {src.name} (note {n['id']}): {e}; download it again", file=sys.stderr)
+            continue
+        rows.append({**{k: v for k, v in row.items() if k != "noteText"}, "wav": wav.name, "seconds": secs, "noteText": row["noteText"]})
+        print(f"{wav}  ← {row['cut']} line {row['line'] + 1}: {row['words'][:60]}")
+    if rows:
+        (out / "takes.json").write_text(json.dumps(rows, indent=1, ensure_ascii=False) + "\n")
+        print(f"{out / 'takes.json'}: {len(rows)} take(s) with their words")
+    if reads:
+        print("Download these with the Artifact tool, one call each, then run `cut-review takes` again:")
+        print(json.dumps(reads, indent=1))
+    return 1 if failed else 0
+
+
 def cmd_fix(a) -> int:
     room = Room.load(a.room)
     replies: dict[str, str] = {}
@@ -322,6 +356,10 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note, and set stills with a region (ffmpeg)")
     s.add_argument("--width", type=int, default=540)
     s.set_defaults(fn=cmd_frames)
+
+    s = sub.add_parser("takes", help="download open notes' voice takes and convert them to WAV (ffmpeg)")
+    s.add_argument("--out", help="folder for the WAVs and takes.json (default .cut-review/takes)")
+    s.set_defaults(fn=cmd_takes)
 
     s = sub.add_parser("fix", help="print the writes that answer notes")
     s.add_argument("pairs", nargs="*", metavar="ID=REPLY")

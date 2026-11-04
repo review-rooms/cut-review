@@ -6,10 +6,11 @@ from pathlib import Path
 import pytest
 
 from cut_review import cli
-from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, todo, where
+from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, take_of, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
+from cut_review.takes import take_row
 
 NO_PROBE = lambda p: None  # noqa: E731
 
@@ -274,6 +275,32 @@ def test_todo_shows_script_lines_and_quotes(room_dir, tmp_path):
     assert '[script line 8] · Line gone' in out          # a line the script no longer has still shows its number
 
 
+A = "39bb1bc8def01eca67a6f983358b3c0d"
+
+
+def test_take_of_accepts_only_well_formed_takes_on_script_lines():
+    ok = {"line": 0, "take": {"asset": A, "seconds": 4.2, "type": "video/mp4"}}
+    assert take_of(ok) == {"asset": A, "seconds": 4.2, "type": "video/mp4"}
+    for bad in ({"asset": "xyz", "seconds": 1, "type": "video/mp4"}, {"asset": A, "seconds": "4", "type": "video/mp4"},
+                {"asset": A, "seconds": True, "type": "video/mp4"}, {"asset": A, "seconds": -1, "type": "video/mp4"},
+                {"asset": A, "seconds": 1, "type": "audio/mp4"}, {"seconds": 1, "type": "video/mp4"}, "take", None):
+        assert take_of({"line": 0, "take": bad}) is None
+    assert take_of({"line": None, "take": ok["take"]}) is None
+
+
+def test_todo_shows_a_take_under_its_line(room_dir, tmp_path):
+    room = Room.load(room_dir)
+    notes = load_export(export(tmp_path, {
+        "t": {"id": "t", "version": 1, "data": {"cut": "poll", "t": 0, "line": 0, "text": "Like this", "status": "open",
+                                                  "take": {"asset": A, "seconds": 4.2, "type": "video/mp4"}}},
+        "b": {"id": "b", "version": 1, "data": {"cut": "poll", "t": 1, "line": 0, "text": "Broken", "status": "open",
+                                                  "take": {"asset": "nope"}}},
+    }))
+    out = todo(room, notes)
+    assert "Like this  (id t, written on v1)\n  line: Hook\n  take: 4.2 s (asset 39bb…)" in out
+    assert out.count("take:") == 1
+
+
 def test_page_script_scroll_respects_reduced_motion(room_dir, capsys):
     out = room_dir / "page.html"
     run(room_dir, "page", "-o", str(out))
@@ -475,3 +502,155 @@ def test_page_asks_to_publish_with_downloads(room_dir, capsys):
     assert run(room_dir, "page", "-o", str(out)) == 0
     assert '"downloads": true' in capsys.readouterr().err
     assert 'use("downloads")' in out.read_text()
+
+
+# ---------------------------------------------------------------- voice takes
+B = "0f" * 16
+URL = "https://claude.ai/artifact/room1"
+
+
+def take_note(nid, status="open", asset=A, line=0, **more):
+    data = {"cut": "poll", "t": 0, "tEnd": 3, "line": line, "text": f"note {nid}", "status": status,
+            "take": {"asset": asset, "seconds": 4.2, "type": "video/mp4"} if asset else None, **more}
+    return {"id": nid, "version": 1, "data": data}
+
+
+def save_takes(room_dir, tmp_path, *docs, link=True):
+    if link:
+        assert run(room_dir, "link", URL) == 0
+    save_notes(Room.load(room_dir), load_export(export(tmp_path, {d["id"]: d for d in docs})))
+
+
+def test_takes_prints_a_read_call_per_open_take(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), take_note("r", status="resolved", asset=B), take_note("n", asset=None))
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    out = capsys.readouterr().out
+    calls = json.loads(out[out.index("["):])
+    assert calls == [{"action": "read", "url": URL, "path": A, "out_dir": str(room_dir / ".cut-review" / "takes" / "raw")}]
+    assert "then run `cut-review takes` again" in out
+
+
+def test_takes_with_none_open_says_so(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("r", status="fixed"))
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    assert capsys.readouterr().out.strip() == "No open notes with a take."
+
+
+def test_takes_refuses_without_a_linked_room(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), link=False)
+    assert run(room_dir, "takes") == 1
+    assert "cut-review link" in capsys.readouterr().err
+
+
+def test_take_row_words_for_spans_gone_words_and_gone_lines(room_dir):
+    room = Room.load(room_dir)
+    base = {"id": "x", "cut": "poll", "text": "Like this", "line": 0}
+    row = take_row(room, {**base, "quote": "Hook", "qStart": 0, "qEnd": 4})
+    assert row == {"note": "x", "cut": "poll", "line": 0, "from": 0, "to": 3, "text": "Hook", "words": "Hook", "noteText": "Like this"}
+    assert take_row(room, {**base, "quote": "Gone"})["words"] == "Gone"
+    assert take_row(room, {**base, "quote": None})["words"] == "Hook"
+    gone = take_row(room, {**base, "line": 5, "quote": "Hook"})
+    assert (gone["text"], gone["from"], gone["to"], gone["words"]) == ("", None, None, "Hook")
+
+
+def raw_take(room_dir, asset=A):
+    d = room_dir / ".cut-review" / "takes" / "raw"
+    d.mkdir(parents=True, exist_ok=True)
+    dst = d / f"{asset}.mp4"   # a quiet 3 s tone after 1 s of silence, 48 kHz stereo AAC, like a phone take
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3:sample_rate=48000",
+                    "-af", "volume=0.05,adelay=1000|1000", "-ac", "2", "-c:a", "aac", str(dst)], check=True)
+    return dst
+
+
+def probe(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name,sample_rate,channels:format=duration",
+                          "-of", "json", str(path)], capture_output=True, text=True, check=True).stdout
+    j = json.loads(out)
+    return j["streams"][0], float(j["format"]["duration"])
+
+
+needs_ffmpeg = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg is not installed")
+
+
+@needs_ffmpeg
+def test_takes_converts_downloads_to_24k_mono_wav_and_lists_them(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o", quote="Hook", qStart=0, qEnd=4))
+    raw_take(room_dir)
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 0
+    out = capsys.readouterr().out
+    wav = room_dir / ".cut-review" / "takes" / "poll_line1_o.wav"
+    stream, secs = probe(wav)
+    assert (stream["codec_name"], stream["sample_rate"], stream["channels"]) == ("pcm_s16le", "24000", 1)
+    assert 2.5 < secs < 3.6                       # the leading second of silence is gone
+    rows = json.loads((wav.parent / "takes.json").read_text())
+    assert rows == [{"note": "o", "cut": "poll", "line": 0, "from": 0, "to": 3, "text": "Hook", "words": "Hook",
+                     "wav": "poll_line1_o.wav", "seconds": rows[0]["seconds"], "noteText": "note o"}]
+    assert abs(rows[0]["seconds"] - secs) < 0.11
+    assert f"{wav}  ← poll line 1: Hook" in out and '"action": "read"' not in out
+
+
+@needs_ffmpeg
+def test_takes_out_dir_and_mixed_downloaded_and_missing(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"), take_note("m", asset=B))
+    raw_take(room_dir)
+    capsys.readouterr()
+    assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
+    out = capsys.readouterr().out
+    assert [r["note"] for r in json.loads((tmp_path / "x" / "takes.json").read_text())] == ["o"]
+    assert (tmp_path / "x" / "poll_line1_o.wav").is_file()
+    assert json.loads(out[out.index("["):])[0]["path"] == B
+
+
+def page_html(room_dir) -> str:
+    out = room_dir / "page.html"
+    assert run(room_dir, "page", "-o", str(out)) == 0
+    return out.read_text()
+
+
+def test_page_records_takes_live_with_no_file_upload(room_dir, capsys):
+    html = page_html(room_dir)
+    assert 'type="file"' not in html and "<script src=" not in html     # no picker, no camera, no mp4 parsing
+    assert "getUserMedia({ audio: true })" in html and "new MediaRecorder(" in html
+    assert 'allowsFeature("microphone")' in html                         # the button shows only where the mic is usable
+    assert "innerHTML" not in html and html.startswith("<title>")
+
+
+def test_page_offers_takes_only_in_the_note_form(room_dir, capsys):
+    html = page_html(room_dir)
+    assert html.count("🎙 Record how it should sound") == 1 and "Pick a file" not in html
+    assert 'id="takeRow" hidden' in html and 'id="b-rec"' in html and 'id="b-stop"' in html
+    assert "take: S.line && take && asset" in html and 'use("assets")' in html
+
+
+@needs_ffmpeg
+def test_takes_names_stay_inside_the_out_dir(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("../evil"), take_note("x2", asset=B, cut="../../outside"))
+    raw_take(room_dir); raw_take(room_dir, B)
+    capsys.readouterr()
+    run(room_dir, "takes")
+    out_dir = room_dir / ".cut-review" / "takes"
+    wavs = sorted(p.name for p in out_dir.glob("*.wav"))
+    assert wavs == ["poll_line1____evil.wav"]                 # a cut the room doesn't have is skipped
+    assert not list(room_dir.parent.rglob("outside*")) and not (room_dir / ".cut-review" / "evil.wav").exists()
+
+
+@needs_ffmpeg
+def test_takes_keeps_going_past_a_bad_download(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("bad", asset=B), take_note("good"))
+    raw_take(room_dir)
+    (room_dir / ".cut-review" / "takes" / "raw" / f"{B}.mp4").write_bytes(b"not a video")
+    capsys.readouterr()
+    assert run(room_dir, "takes") == 1
+    io = capsys.readouterr()
+    assert [r["note"] for r in json.loads((room_dir / ".cut-review" / "takes" / "takes.json").read_text())] == ["good"]
+    assert "couldn't convert" in io.err and B in io.err
+
+
+def test_takes_folders_keep_themselves_out_of_git(room_dir, tmp_path, capsys):
+    save_takes(room_dir, tmp_path, take_note("o"))
+    assert run(room_dir, "takes", "--out", str(tmp_path / "x")) == 0
+    for d in (room_dir / ".cut-review" / "takes" / "raw", tmp_path / "x"):
+        assert (d / ".gitignore").read_text() == "*\n"

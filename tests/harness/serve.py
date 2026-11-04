@@ -5,7 +5,12 @@
 The room folder must have been built (`cut-review build`): its records in `.cut-review/out/` seed the stand-in
 database, and `/_blob/<id>` serves the local file that `.cut-review/state.json` maps to that asset id, with byte
 ranges so videos seek. Notes and verdicts written on the page live in memory until the page reloads;
-`window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved. Nothing here talks to claude.ai.
+`window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved.
+Files the page uploads (voice takes) go to `.cut-review/harness-assets/` and are served at `/_blob/<id>` too;
+`window.__assets` lists uploads and deletions. `?noassets` / `?nodownloads` leave those capabilities out.
+`?mic=fake` gives the page a microphone that plays a tone (as if the frame allowed the mic); `?mic=blocked`
+answers like claude.ai today (permission denied).
+Nothing here talks to claude.ai.
 """
 from __future__ import annotations
 
@@ -13,7 +18,9 @@ import http.server
 import json
 import mimetypes
 import re
+import secrets
 import sys
+from urllib.parse import parse_qs
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -52,7 +59,34 @@ MOCK = r"""<script>
   const downloads = location.search.includes("nodownloads") ? null : {
     save: async ({ filename, data }) => { window.__downloads.push({ filename, size: data.size ?? data.length }); return { status: "saved" }; },
   };
-  const caps = { db, user, downloads };
+  // `assets` stand-in: uploads go to the server (saved under .cut-review/harness-assets/, served at /_blob/<id>)
+  window.__assets = [];
+  const assets = location.search.includes("noassets") ? null : {
+    async upload(blob, opts) {
+      const type = (opts && opts.type) || blob.type;
+      if (!["video/mp4", "video/webm"].includes(type) && !/^image\//.test(type)) throw { code: "unsupported_type", message: type };
+      if (blob.size > 20 * 1024 * 1024) throw { code: "too_large", message: String(blob.size) };
+      const r = await fetch("/_assets?type=" + encodeURIComponent(type), { method: "POST", body: blob });
+      const a = await r.json();
+      window.__assets.push({ op: "upload", ...a });
+      return a;
+    },
+    async delete(id) { await fetch("/_assets?delete=" + id, { method: "POST" }); window.__assets.push({ op: "delete", id }); },
+  };
+  // microphone stand-ins: claude.ai blocks the mic in its frames, so the page must also work without one
+  const mic = (location.search.match(/mic=(\w+)/) || [])[1];
+  if (mic === "fake" || mic === "blocked") {
+    const realQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => d && d.name === "microphone" ? Promise.resolve({ state: mic === "fake" ? "prompt" : "denied" }) : realQuery(d);
+    navigator.mediaDevices.getUserMedia = async () => {
+      if (mic === "blocked") throw Object.assign(new Error("Permission denied"), { name: "NotAllowedError" });
+      const ac = new AudioContext(); await ac.resume();
+      const osc = ac.createOscillator(), dest = ac.createMediaStreamDestination();
+      osc.frequency.value = 330; osc.connect(dest); osc.start();
+      return dest.stream;
+    };
+  }
+  const caps = { db, user, downloads, assets };
   window.claude = { use: (n) => new Promise((r) => setTimeout(() => r(caps[n] ?? null), 30)) };
 })();
 </script>
@@ -84,10 +118,37 @@ def blobs(room: Path) -> dict[str, Path]:
 
 def handler(room: Path):
     files = blobs(room)
+    uploads = room / ".cut-review" / "harness-assets"
+    types: dict[str, str] = {}
 
     class H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
+
+        def do_POST(self):
+            path, _, query = self.path.partition("?")
+            q = parse_qs(query)
+            if path != "/_assets":
+                self.send_error(404)
+                return
+            if "delete" in q:
+                i = q["delete"][0]
+                if re.fullmatch(r"[0-9a-f]{32}", i):
+                    (uploads / i).unlink(missing_ok=True)
+                    files.pop(i, None)
+                body = b"{}"
+            else:
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                i, typ = secrets.token_hex(16), q.get("type", ["application/octet-stream"])[0]
+                uploads.mkdir(parents=True, exist_ok=True)
+                (uploads / i).write_bytes(data)
+                files[i], types[i] = uploads / i, typ
+                body = json.dumps({"id": i, "url": f"/_blob/{i}", "sizeBytes": len(data), "contentType": typ}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_GET(self):
             path = self.path.split("?", 1)[0]
@@ -115,7 +176,7 @@ def handler(room: Path):
                 self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             else:
                 self.send_response(200)
-            self.send_header("Content-Type", mimetypes.guess_type(f.name)[0] or "application/octet-stream")
+            self.send_header("Content-Type", types.get(m.group(1)) or mimetypes.guess_type(f.name)[0] or "application/octet-stream")
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(end - start + 1))
             self.end_headers()

@@ -76,6 +76,22 @@ def script_line(note: dict) -> int | None:
     return i if i >= 0 else None
 
 
+TAKE_TYPES = ("video/mp4", "video/webm")
+
+
+def take_of(note: dict) -> dict | None:
+    """A script note's voice take as {asset, seconds, type}, or None when it has none or it is malformed."""
+    t = note.get("take")
+    if script_line(note) is None or not isinstance(t, dict):
+        return None
+    asset, secs, typ = t.get("asset"), t.get("seconds"), t.get("type")
+    if not isinstance(asset, str) or not re.fullmatch(r"[0-9a-f]{32}", asset):
+        return None
+    if isinstance(secs, bool) or not isinstance(secs, (int, float)) or secs < 0 or typ not in TAKE_TYPES:
+        return None
+    return {"asset": asset, "seconds": float(secs), "type": typ}
+
+
 def where(note: dict) -> str:
     """Where a note points: set item, time range, time or whole cut, plus its frame region and script line."""
     if note.get("item"):
@@ -178,6 +194,9 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
                 lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")
+            take = take_of(n)
+            if take:
+                lines.append(f"  take: {take['seconds']:.1f} s (asset {take['asset'][:4]}…)")
             if n.get("reply"):
                 lines.append(f"  reply: {n['reply']}")
         lines.append("")

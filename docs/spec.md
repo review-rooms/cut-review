@@ -30,7 +30,7 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
 | `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
 | `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes` | CLI `build` |
-| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
+| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `take` (null, or `{asset, seconds, type}`: a voice take of how the line should sound, only on notes with `line`; `asset` is the asset id (32 hex), `seconds` its length, `type` the stored content type, `video/mp4` or `video/webm`; `cut-review notes` shows it as a `take:` row), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
 | `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` | page |
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
@@ -43,6 +43,16 @@ tap more words or Shift-click for a span), on any characters (select them, then 
 on the whole line (Comment); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
 with "Looks right" / "Still wrong", a change log per cut, a verdict per cut, a phone layout with a chip row,
 deep links by `#<key>`, light and dark themes.
+
+Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
+and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone
+(`getUserMedia` + `MediaRecorder`, Stop, at most 3 minutes) for people who can upload assets (Editors). There is no
+file upload. The button shows only where the mic is usable (permissions policy allows it and the permission isn't
+denied); claude.ai blocks the mic in its frames today, on desktop and in the iOS app, so it stays hidden there until
+that changes. The take uploads at once (as `video/mp4` or `video/webm`), shows as a player with Redo and Remove, and
+Add note waits for the upload. Redo, Remove, detaching the line, moving to another line or cut, and leaving the line
+mid-recording drop the take (an uploaded one is deleted); deleting your own note deletes its take. Saved notes with a
+take show a 🎙 button with its length and a player; script lines with one show 🎙 beside their note count.
 
 ### 2. The CLI (`cut-review`, Python 3.10+, standard library only; ffmpeg/ffprobe optional)
 
@@ -59,6 +69,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `written FILE` | Reads the batch result and records each document's database version. |
 | `notes DIR [--result FILE]` | Reads notes exported with `ArtifactData` `query`/`list` + `out_dir` (the files hold only note bodies; `--result` is the saved tool result text, which names each document's database version), saves them normalized to `.cut-review/notes.json`, prints a to-do list grouped by cut with timecodes. |
 | `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it: a range note gives its first and last frame (`_start`, `_end`), a region is boxed in red (a whole-cut note with a region uses the first frame). An open set note with a region on a still item saves that image with the region boxed (`<set>_<item>_<id>.png`). |
+| `takes` | For every open note with a voice take (in the saved notes), prints the `Artifact` `read` calls that download it (`url` the room, `path` the asset id, `out_dir` `.cut-review/takes/raw`), as JSON to run one by one. Each take already downloaded is converted with ffmpeg to `<cut>_line<n>_<note id>.wav` (24 kHz, mono, 16-bit, leading and trailing silence trimmed, `loudnorm` to −20 LUFS) in `.cut-review/takes/` (or `--out DIR`), and `takes.json` there lists `{note, cut, line, from, to, text, words, wav, seconds, noteText}` for each; `words` is the note's words in the line, or its quote when those words left the line, or the whole line. |
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
 
