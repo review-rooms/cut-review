@@ -97,6 +97,15 @@ button { cursor: pointer; }
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .head h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.25; }
 .meta { font-size: 12px; color: var(--muted); }
+/* beside the title the facts give way (cut short, all of them on hover) so the version menu and Compare stay on its
+   row; what still doesn't fit (a long sound switch) wraps */
+@media (min-width: 761px) {
+  .head h1 { flex: 0 1 auto; min-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .head .meta { flex: 1 1 0; min-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .head .grow { display: none; }
+  .head .versel, .head #b-cmp { flex: none; }
+  .head .versel { max-width: 240px; }
+}
 .why { margin: -4px 0 0; color: var(--muted); font-size: 13px; max-width: 72ch; }
 .why:empty { display: none; }
 .seg { display: inline-flex; padding: 2px; background: var(--sunk); border-radius: 8px; font-size: 12px; }
@@ -576,13 +585,13 @@ button { cursor: pointer; }
     }
     notePlaceholder();
     if (changed) $("composerHint").textContent = TYPE_HINT;
-    setText($("title"), e.title || e.key);
+    setText($("title"), e.title || e.key); setAttr($("title"), "title", e.title || e.key);
     const facts = [];
     if (!isSet && e.length) facts.push(fmtLen(e.length));
     if (isSet) facts.push((e.items || []).length + " items");
     facts.push(...(e.tags || []));
     if (e.aspect) facts.push(e.aspect);
-    setText($("meta"), facts.join(" · "));
+    setText($("meta"), facts.join(" · ")); setAttr($("meta"), "title", facts.join(" · "));
     setText($("why"), e.description || "");
     renderVersions(rawEntry(key)); renderCompare();
     if (isSet) {

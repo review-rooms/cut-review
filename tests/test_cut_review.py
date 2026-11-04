@@ -1117,3 +1117,11 @@ def test_harness_seeds_notes_from_an_optional_file(tmp_path):
     assert "notes" not in harness.seed(tmp_path)
     (tmp_path / ".cut-review" / "harness-notes.json").write_text('{"n1": {"cut": "a", "text": "hi", "version": 1}}')
     assert harness.seed(tmp_path)["notes"] == {"n1": {"cut": "a", "text": "hi", "version": 1}}
+
+
+def test_page_keeps_the_version_menu_on_the_title_row(room_dir, capsys):
+    html = page_html(room_dir)
+    wide = html.split("@media (min-width: 761px) {\n")[1].split("}\n}")[0]
+    assert ".head .meta { flex: 1 1 0; min-width: 8em; overflow: hidden; text-overflow: ellipsis;" in wide
+    assert "flex-wrap: nowrap" not in wide                          # a long sound switch must still wrap
+    assert 'setAttr($("meta"), "title", facts.join(" · "));' in html   # the facts cut short are still on hover
