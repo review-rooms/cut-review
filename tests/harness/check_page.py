@@ -117,6 +117,18 @@ with sync_playwright() as p:
         check("phone: the lane and timeline span the transport, first", J("document.querySelector('.tl').getBoundingClientRect().width") >= J("document.querySelector('.controls').getBoundingClientRect().width") - 1
               and lb["y"] < pg.locator("#b-play").bounding_box()["y"])
     check("no horizontal scroll", J("document.documentElement.scrollWidth <= window.innerWidth"))
+    # with nothing stamped yet, From follows the playhead, so it follows a scrub too (and nothing gets stamped)
+    pg.locator("#track").scroll_into_view_if_needed(); bb = pg.locator("#track").bounding_box(); y = bb["y"] + bb["height"] / 2
+    pg.mouse.move(bb["x"] + bb["width"] * .1, y); pg.mouse.down()
+    for i in range(10): pg.mouse.move(bb["x"] + bb["width"] * (.1 + .4 * i / 9), y)
+    pg.mouse.up(); pg.wait_for_timeout(300)
+    check("an unstamped From follows a scrub, no range", J("document.getElementById('tFrom').value").startswith("0:04") and J("document.getElementById('tTo').value") == "")
+    J("document.getElementById('vid').play()"); pg.wait_for_timeout(300)
+    pg.locator("#lane").scroll_into_view_if_needed(); lb = pg.locator("#lane").bounding_box()
+    pg.mouse.click(lb["x"] + lb["width"] * .6, lb["y"] + lb["height"] / 2); pg.wait_for_timeout(400)
+    check("a click on empty lane seeks and keeps playing, like the timeline", not J("document.getElementById('vid').paused")
+          and .6 <= J("document.getElementById('vid').currentTime / document.getElementById('vid').duration") < .75)
+    J("document.getElementById('vid').pause()"); pg.wait_for_timeout(200)
     pg.locator("#b-restamp").click(); pg.wait_for_timeout(100)
     fr0 = J("document.getElementById('tFrom').value")
     J("document.getElementById('vid').play()"); pg.wait_for_timeout(300)
@@ -323,13 +335,11 @@ with sync_playwright() as p:
     pg.locator("#b-back").click(); pg.wait_for_timeout(400)
     s1, s2 = J(f"[{V}.currentTime, {V2}.currentTime]")
     check(f"frame steps move both ({s1:.3f}, {s2:.3f})", abs(s1 - t1 - 2 / 30) < 0.02 and abs(s1 - s2) < 0.05)
-    pg.locator('[data-rate="0.5"]').click(); pg.wait_for_timeout(100)
-    check("speed reaches the past picture", J(f"{V2}.playbackRate") == 0.5)
-    for r in ("1.5", "2"):
-        pg.locator(f'[data-rate="{r}"]').click(); pg.wait_for_timeout(100)
-        check(f"{r}× plays both at {r}× and is the only one pressed", J(f"[{V}.playbackRate, {V2}.playbackRate]") == [float(r)] * 2
-              and J("[...document.querySelectorAll('[data-rate]')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.rate)") == [r])
-    pg.locator('[data-rate="1"]').click()
+    check("one speed button, at 1×", pg.locator("#b-rate").count() == 1 and J("document.getElementById('b-rate').textContent") == "1×")
+    for r in (1.5, 2, 0.5, 1):   # each press steps to the next speed, then round again
+        pg.locator("#b-rate").click(); pg.wait_for_timeout(100)
+        check(f"the speed button steps to {r:g}× and both play at it", J(f"[{V}.playbackRate, {V2}.playbackRate]") == [r, r]
+              and J("document.getElementById('b-rate').textContent") == f"{r:g}×")
     check("sound from the current version only", J(f"[{V}.muted, {V2}.muted]") == [False, True])
     pg.locator("#snd2").click(); pg.wait_for_timeout(100)
     check("the speaker moves the sound to v2", J(f"[{V}.muted, {V2}.muted]") == [True, False])

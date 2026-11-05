@@ -802,11 +802,7 @@ def test_page_track_scrubs_and_lane_marks_ranges(room_dir, capsys):
     lane = html.index('<div class="lane" id="lane"')
     assert lane < html.index('<div class="track" id="track"') and 'aria-label="Note marks: drag to mark a range for a note"' in html
     assert '$("lane").append(frag)' in html and '$("lane").append(selBox)' in html and '$("track").append(' not in html
-    drag = html[html.index("// the timeline scrubs"):html.index('document.addEventListener("keydown"')]
-    # only a drag in the lane (never on a past version) stamps the note; the track only seeks, paused while held
-    assert drag.count("markRange(") == 2 and drag.count("S.stampT =") == 1                 # one place stamps, called twice
-    assert "if (d.lane) markRange(a, b);" in drag and "if (d.lane && d.moved) {\n        markRange(" in drag
-    assert 'lane: el === $("lane") && !S.viewV' in drag and "vid.play()" in drag
+    # the gestures themselves (scrub, range, clicks, past versions, compare) are driven in tests/harness/check_page.py
 
 
 def test_page_touch_targets_and_contract(room_dir, capsys):

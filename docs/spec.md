@@ -36,15 +36,17 @@ One generic page, the same for every room. Everything room-specific comes from i
 Layout ("script under the picture", from the Claude Design board *Review Room Layouts*, option 1b): a top bar with the
 room's title; the cut list on the left (one line per cut: verdict dot, name, open-note count; a chip row on phones);
 the player in the middle with the cut's title, facts, sound-version switch and version menu above it, a transport row
-(play, frame steps, time and frame, the timeline with a thin notes lane right above it, speed 0.5× 1× 1.5× 2×, loop, download) under it, and the script following
+(play, frame steps, time and frame, the timeline with a thin notes lane right above it, speed (one button stepping 1×, 1.5×, 2×, 0.5×), loop, download) under it, and the script following
 along beneath; notes on the right with the note form docked under them and the verdict (Needs changes, Approve vN)
 at the foot. Below 1180 px the notes go under the picture and the page scrolls as one. One blue for open, amber for
 fixed and needs changes, green for resolved and approved, grey for won't fix; Geist and Geist Mono.
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`, or click the picture), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
 (`n`, Enter saves), a timeline that scrubs (press, drag and release seek; the video pauses while held and plays on
-after if it was playing; it never changes the note's time), note markers in the notes lane right above it (a slim strip, always
-tinted with a note icon at its start so it reads as the place for comments, as wide as the timeline, so a mark sits over its moment; clicking a marker focuses its note, a click on empty lane seeks),
+after if it was playing; it never stamps the note's time: until a time is stamped, From follows the playhead as it
+does in playback), note markers in the notes lane right above it (a slim strip, always
+tinted with a note icon at its start so it reads as the place for comments, as wide as the timeline, so a mark sits over its moment; clicking a marker focuses its note, a click on empty lane seeks and keeps playing, like the timeline; a range dragged there
+stays paused on its start),
 notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging in the
 notes lane or `i` / `o` fill them too; shown as a bar in the lane) and on a region of the frame
 (drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
@@ -86,7 +88,8 @@ frame, against the box read at the press; snapshots with
 unchanged data are dropped and the rest render together in the next frame, reusing note cards, set items and
 cut-list buttons whose data didn't change, so playing takes and looping clips keep playing. On phones (or any coarse
 pointer) every control is at least 44 px tall (take players too), the timeline and the notes lane are each a 44 px band, and
-the lane's marks get a larger hit area that stays inside the lane.
+the lane's point marks get a larger hit area, vertically inside the lane (range marks don't, so the lane stays free to
+drag a new range on).
 
 Voice takes (design: `docs/superpowers/specs/2026-11-02-voice-takes-design.md`): while a note is on a script line,
 and only then, the note form offers **🎙 Record how it should sound**, which records live from the microphone

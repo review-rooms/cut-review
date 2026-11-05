@@ -151,9 +151,8 @@ button { cursor: pointer; }
 .controls .fr { font-size: 12px; color: var(--faint); white-space: nowrap; }
 .controls .txt { font-size: 12px; padding: 6px 7px; }
 .controls .txt[aria-pressed="true"] { background: var(--sunk); color: var(--ink); }
-.rates { display: inline-flex; }
-.rates button { font: 500 12px var(--mono); padding: 6px 7px; }
-.rates button[aria-pressed="true"] { background: var(--sunk); color: var(--ink); }
+.rate { font: 500 12px var(--mono); padding: 6px 7px; min-width: 4.5ch; border-radius: 6px; }
+.rate:hover { background: var(--sunk); color: var(--ink); }
 .tl { flex: 1; min-width: 140px; margin: 0 8px; display: flex; flex-direction: column; }
 .track { position: relative; height: 28px; cursor: pointer; touch-action: none; contain: layout style; }
 /* the notes lane above the timeline: its marks, the range being marked, and a drag there marks a range */
@@ -344,7 +343,7 @@ button { cursor: pointer; }
   .note .tk { min-height: var(--hit); padding: 0 12px; }
   .ghost, .seg button, .tfield .ghost { min-width: var(--hit); }
   .controls .play { width: var(--hit); height: var(--hit); }
-  .controls .step, .controls .txt, .rates button { min-width: var(--hit); min-height: var(--hit); }
+  .controls .step, .controls .txt, .rate { min-width: var(--hit); min-height: var(--hit); }
   .sline .tbtn, .lc .lbtn { min-height: var(--hit); }
   .take audio, .note audio { height: var(--hit); }
   .log summary { line-height: calc(var(--hit) - 8px); }
@@ -353,7 +352,7 @@ button { cursor: pointer; }
   .track, .lane { height: var(--hit); }
   .track .rail, .track .fill { top: 20px; }
   .track .head-line { top: 16px; }
-  .mark::after { content: ""; position: absolute; inset: -30px -16px 0; }
+  .mark:not(.range)::after { content: ""; position: absolute; inset: calc(14px - var(--hit)) -16px 0; }   /* range marks leave the lane free to drag on */
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 </style>
@@ -411,7 +410,7 @@ button { cursor: pointer; }
           <span class="tc mono" id="tc">0:00.0</span><span class="fr mono" id="fr"></span>
           <div class="tl"><div class="lane" id="lane" role="group" aria-label="Note marks: drag to mark a range for a note" title="Drag to mark a range for a note"></div>
           <div class="track" id="track" aria-label="Timeline: drag to scrub"><div class="rail"></div><div class="fill" id="fill"></div><div class="head-line" id="playhead"></div></div></div>
-          <span class="rates"><button data-rate="0.5" aria-pressed="false">0.5×</button><button data-rate="1" aria-pressed="true">1×</button><button data-rate="1.5" aria-pressed="false">1.5×</button><button data-rate="2" aria-pressed="false">2×</button></span>
+          <button class="rate" id="b-rate" title="Playback speed: press for the next one" aria-label="Playback speed 1×">1×</button>
           <button class="txt" id="b-loop" aria-pressed="false" title="Loop the cut">Loop</button>
           <button class="txt" id="b-dl" title="Download this video" hidden>Download</button>
         </div>
@@ -1091,47 +1090,47 @@ button { cursor: pointer; }
     }
   };
   $("b-loop").onclick = (ev) => { vid.loop = !vid.loop; ev.currentTarget.setAttribute("aria-pressed", String(vid.loop)); };
-  for (const b of document.querySelectorAll("[data-rate]")) b.onclick = () => {
-    vid.playbackRate = +b.dataset.rate;
-    document.querySelectorAll("[data-rate]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  const RATES = [1, 1.5, 2, 0.5];   // each press steps to the next, then round again
+  $("b-rate").onclick = (ev) => {
+    const r = RATES[(RATES.indexOf(vid.playbackRate) + 1) % RATES.length], b = ev.currentTarget;
+    vid.playbackRate = r; b.textContent = r + "×"; b.setAttribute("aria-label", "Playback speed " + r + "×");
   };
   // the timeline scrubs: press, drag and release seek, paused while held and playing again after if it was. The lane
   // above it marks a range for a note instead (not on a past version, where it scrubs). The moves are applied once
   // per frame, against the box read at the press.
-  let drag = null;
+  let drag = null;   // {mode: "scrub" | "range", x, cx, moved, rect, play, id}
   const tAt = (x, r) => Math.max(0, Math.min(1, (x - r.left) / r.width)) * dur();
   const markRange = (a, b) => { S.stampT = Math.min(a, b); S.stampEnd = Math.max(a, b); S.stampLocked = true; $("general").checked = false; };
-  const scrubSoon = perFrame(() => {
-    const d = drag;
-    if (!d || (d.lane && !d.moved)) return;
-    const a = tAt(d.x, d.rect), b = tAt(d.cx, d.rect);
-    if (d.lane) markRange(a, b);
-    seek(b, true);
-    if (d.lane) { updateStamp(); renderSel(); }
-  });
+  // a scrub seeks to the pointer; a range stamps first (seek can repaint the unlocked From) and lands on its start
+  function applyDrag(d, final) {
+    const b = tAt(d.cx, d.rect);
+    if (d.mode === "scrub") { seek(b, true); return; }
+    if (!d.moved) { if (final) seek(b, true); return; }   // a click on the lane seeks, like the timeline
+    markRange(tAt(d.x, d.rect), b);
+    if (final && S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
+    seek(final ? S.stampT : b, true); updateStamp(); renderSel();
+  }
+  const scrubSoon = perFrame(() => { if (drag) applyDrag(drag, false); });
+  const endDrag = (d) => { if (d.play && (d.mode === "scrub" || !d.moved)) vid.play().catch(() => {}); };   // a marked range stays paused on its start
   for (const el of [$("track"), $("lane")]) {
     el.addEventListener("pointerdown", (ev) => {
-      if (ev.target.classList.contains("mark") || ev.button > 0) return;
-      drag = { x: ev.clientX, cx: ev.clientX, moved: false, rect: el.getBoundingClientRect(), lane: el === $("lane") && !S.viewV, play: !vid.paused };
+      if (drag || !ev.isPrimary || ev.target.classList.contains("mark") || ev.button > 0) return;
+      const mode = el === $("lane") && !S.viewV ? "range" : "scrub";
+      drag = { mode, x: ev.clientX, cx: ev.clientX, moved: false, rect: el.getBoundingClientRect(), play: !vid.paused, id: ev.pointerId };
       el.setPointerCapture(ev.pointerId);
-      if (!drag.lane) scrubSoon();
+      if (mode === "scrub") scrubSoon();
     });
     el.addEventListener("pointermove", (ev) => {
-      if (!drag || (!drag.moved && Math.abs(ev.clientX - drag.x) < 5)) return;
+      if (!drag || ev.pointerId !== drag.id || (!drag.moved && Math.abs(ev.clientX - drag.x) < 5)) return;
       drag.moved = true; drag.cx = ev.clientX;
       scrubSoon();
     });
     el.addEventListener("pointerup", (ev) => {
-      if (!drag) return;
-      const d = drag; drag = null;
-      if (d.lane && d.moved) {
-        markRange(tAt(d.x, d.rect), tAt(ev.clientX, d.rect));
-        if (S.stampEnd - S.stampT < 1 / FPS) S.stampEnd = null;
-        seek(S.stampT, true); updateStamp(); renderSel();
-      } else seek(tAt(ev.clientX, d.rect), true);
-      if (d.play && !d.lane) vid.play().catch(() => {});
+      if (!drag || ev.pointerId !== drag.id) return;
+      const d = drag; drag = null; d.cx = ev.clientX;
+      applyDrag(d, true); endDrag(d);
     });
-    el.addEventListener("pointercancel", () => { const d = drag; drag = null; if (d?.play && !d.lane) vid.play().catch(() => {}); });
+    el.addEventListener("pointercancel", (ev) => { const d = drag; if (!d || ev.pointerId !== d.id) return; drag = null; endDrag(d); });
   }
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && S.drawing) { ev.preventDefault(); setDrawing(false); return; }
