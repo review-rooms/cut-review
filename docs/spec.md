@@ -43,8 +43,8 @@ fixed and needs changes, green for resolved and approved, grey for won't fix; Ge
 
 Behaviour carried over from the first room built this way: frame stepping (`,` `.`), play (`k`, or click the picture), a Download button for the selected cut's video (the version on screen, saved through the `downloads` capability, which asks the viewer to confirm; a plain link outside claude.ai), new note at the paused frame
 (`n`, Enter saves), a timeline that scrubs (press, drag and release seek; the video pauses while held and plays on
-after if it was playing; it never changes the note's time), note markers in the notes lane right above it (a slim strip,
-as wide as the timeline, so a mark sits over its moment; clicking a marker focuses its note, a click on empty lane seeks),
+after if it was playing; it never changes the note's time), note markers in the notes lane right above it (a slim strip, always
+tinted with a note icon at its start so it reads as the place for comments, as wide as the timeline, so a mark sits over its moment; clicking a marker focuses its note, a click on empty lane seeks),
 notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging in the
 notes lane or `i` / `o` fill them too; shown as a bar in the lane) and on a region of the frame
 (drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to

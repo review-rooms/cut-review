@@ -157,15 +157,19 @@ button { cursor: pointer; }
 .tl { flex: 1; min-width: 140px; margin: 0 8px; display: flex; flex-direction: column; }
 .track { position: relative; height: 28px; cursor: pointer; touch-action: none; contain: layout style; }
 /* the notes lane above the timeline: its marks, the range being marked, and a drag there marks a range */
-.lane { position: relative; height: 12px; cursor: crosshair; touch-action: none; contain: layout style; border-radius: 3px; }
-.lane:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+/* always a tinted band with a note icon at its start, so it reads as the place for comments */
+.lane { position: relative; height: 16px; cursor: crosshair; touch-action: none; contain: layout style; border-radius: 4px;
+  background: color-mix(in srgb, var(--open) 9%, transparent); }
+.lane:hover { background: color-mix(in srgb, var(--open) 16%, transparent); }
+.lane::before { content: ""; position: absolute; left: 4px; top: 50%; width: 10px; height: 10px; margin-top: -5px; pointer-events: none;
+  background: var(--open); opacity: 0.55; -webkit-mask: var(--bubble) center / contain no-repeat; mask: var(--bubble) center / contain no-repeat; }
 .track .rail, .track .fill { position: absolute; left: 0; top: 12px; height: 4px; border-radius: 2px; pointer-events: none; }
 .track .rail { right: 0; background: var(--line); }
 /* the fill and the playhead move by transform only (paint() in the script), once per video frame */
 .track .fill { right: 0; background: var(--ink); transform-origin: 0 50%; transform: scaleX(0); will-change: transform; }
 .track .head-line { position: absolute; left: 0; top: 8px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--panel); border: 2px solid var(--ink); pointer-events: none; z-index: 2; will-change: transform; }
-.lane .sel { position: absolute; bottom: 0; height: 12px; box-sizing: border-box; border: 1.5px solid var(--open); border-radius: 4px; background: color-mix(in srgb, var(--open) 18%, transparent); pointer-events: none; }
-.mark { --c: var(--open); position: absolute; bottom: 0; width: 12px; height: 12px; margin-left: -6px; border: 0; padding: 0; background: none; }
+.lane .sel { position: absolute; bottom: 2px; height: 12px; box-sizing: border-box; border: 1.5px solid var(--open); border-radius: 4px; background: color-mix(in srgb, var(--open) 18%, transparent); pointer-events: none; }
+.mark { --c: var(--open); position: absolute; bottom: 2px; width: 12px; height: 12px; margin-left: -6px; border: 0; padding: 0; background: none; }
 .mark::before { content: ""; position: absolute; left: 5px; top: 2px; width: 2px; height: 10px; border-radius: 1px; background: var(--c); }
 .mark.fixed { --c: var(--fixed-dot); }
 .mark.resolved, .mark.wontfix { --c: var(--faint); opacity: 0.6; }

@@ -111,6 +111,8 @@ with sync_playwright() as p:
     lb = pg.locator("#lane").bounding_box()
     check(f"the notes lane sits right above the timeline, as wide ({lb})", abs(lb["y"] + lb["height"] - bb["y"]) < 1.5
           and abs(lb["x"] - bb["x"]) < 1 and abs(lb["width"] - bb["width"]) < 1 and J("document.getElementById('lane').getAttribute('aria-label')"))
+    check("the lane shows it's there: a tinted band with a note icon", J("getComputedStyle(document.getElementById('lane')).backgroundColor") not in ("rgba(0, 0, 0, 0)", "transparent")
+          and J("getComputedStyle(document.getElementById('lane'), '::before').content") not in ("none", "normal"))
     if W <= 760:
         check("phone: the lane and timeline span the transport, first", J("document.querySelector('.tl').getBoundingClientRect().width") >= J("document.querySelector('.controls').getBoundingClientRect().width") - 1
               and lb["y"] < pg.locator("#b-play").bounding_box()["y"])
