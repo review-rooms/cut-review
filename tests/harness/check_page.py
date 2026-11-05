@@ -117,6 +117,9 @@ with sync_playwright() as p:
         check("phone: the lane and timeline span the transport, first", J("document.querySelector('.tl').getBoundingClientRect().width") >= J("document.querySelector('.controls').getBoundingClientRect().width") - 1
               and lb["y"] < pg.locator("#b-play").bounding_box()["y"])
     check("no horizontal scroll", J("document.documentElement.scrollWidth <= window.innerWidth"))
+    with pg.expect_download(timeout=15000) as dl:   # the stand-in saves the file for real, as claude.ai would
+        pg.locator("#b-dl").click()
+    check(f"Download saves the video ({dl.value.suggested_filename})", dl.value.suggested_filename.endswith(".mp4") and len(J("window.__downloads")) == 1)
     # with nothing stamped yet, From follows the playhead, so it follows a scrub too (and nothing gets stamped)
     pg.locator("#track").scroll_into_view_if_needed(); bb = pg.locator("#track").bounding_box(); y = bb["y"] + bb["height"] / 2
     pg.mouse.move(bb["x"] + bb["width"] * .1, y); pg.mouse.down()

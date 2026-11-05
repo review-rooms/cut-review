@@ -5,7 +5,8 @@
 The room folder must have been built (`cut-review build`): its records in `.cut-review/out/` seed the stand-in
 database, and `/_blob/<id>` serves the local file that `.cut-review/state.json` maps to that asset id, with byte
 ranges so videos seek. Notes and verdicts written on the page live in memory until the page reloads;
-`window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved.
+`window.__store` exposes the data for checks, `window.__downloads` the files the Download button saved (each is
+also saved for real, as a browser download).
 Files the page uploads (voice takes) go to `.cut-review/harness-assets/` and are served at `/_blob/<id>` too;
 `window.__assets` lists uploads and deletions. `?noassets` / `?nodownloads` leave those capabilities out.
 `?mic=fake` gives the page a microphone that plays a tone (as if the frame allowed the mic); `?mic=blocked`
@@ -58,7 +59,14 @@ MOCK = r"""<script>
   // `downloads` stand-in: records each save in window.__downloads; `?nodownloads` leaves it out (the page's fallback)
   window.__downloads = [];
   const downloads = location.search.includes("nodownloads") ? null : {
-    save: async ({ filename, data }) => { window.__downloads.push({ filename, size: data.size ?? data.length }); return { status: "saved" }; },
+    save: async ({ filename, data }) => {
+      window.__downloads.push({ filename, size: data.size ?? data.length });
+      // save it for real too, so a room served locally downloads like one on claude.ai
+      const a = document.createElement("a"), url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+      a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return { status: "saved" };
+    },
   };
   // `assets` stand-in: uploads go to the server (saved under .cut-review/harness-assets/, served at /_blob/<id>)
   window.__assets = [];
