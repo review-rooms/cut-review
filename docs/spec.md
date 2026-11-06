@@ -5,7 +5,7 @@ which the owner wanted as its own tool that any project and any Claude session c
 
 ## Goal
 
-The owner watches rendered videos on any device, pins notes to exact frames, and gives each cut a verdict. A
+The owner watches rendered videos on any device, pins notes to exact frames, resolves them, and approves each cut. A
 Claude session reads the open notes, changes whatever produced the video, re-renders, swaps the new version into
 the room and answers each note with what changed. The owner checks the fix and resolves or reopens the note.
 
@@ -30,14 +30,14 @@ One generic page, the same for every room. Everything room-specific comes from i
 | `room/meta` | `title`, `subtitle`, `scriptLabel`, `groups` (`[{id, label}]`, in sidebar order) | CLI `build` |
 | `cuts/<key>` | `title`, `short`, `group`, `order`, `aspect` (`9:16`, `16:9`, `1:1`, `4:5`), `tags` (strings), `description`, `length` (s), `video`, `poster`, `version`, `changes` (`[{v, note}]`), `script` (`[{from, to, text}]`), `history` (past versions, oldest first, never the current one: `[{v, video, poster, script, length, note}]`, `note` being that version's change or "" for v1; left out while empty; alternate videos aren't kept), optional `alts` (`[{key, label, video}]`: alternate videos such as a version with sound, switched under the player; the base video is labelled `videoLabel`, default "Original"; `altDefault` is the key shown first; the viewer's choice is remembered) | CLI `build` (from `alts: [{key, label, file}]`, `videoLabel`, `altDefault` on the cut in `room.json`) |
 | `sets/<key>` | `title`, `short`, `group`, `order`, `aspect`, `description`, `items` (`[{name, kind: still or clip, url}]`), `version`, `changes`, `history` (`[{v, items, note}]`, as on a cut) | CLI `build` |
-| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null; on a set note, in that clip item's video), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `take` (null, or `{asset, seconds, type}`: a voice take of how the line should sound, only on notes with `line`; `asset` is the asset id (32 hex), `seconds` its length, `type` the stored content type, `video/mp4` or `video/webm`; `cut-review notes` shows it as a `take:` row), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by`, `createdAt` | page (owner), CLI `fix` (Claude) |
-| `verdicts/<key>` | `state` (`none`, `changes`, `approved`), `version`, `at` (a `changes` given on a version older than the current one shows as no verdict, with "Needs changes on vN" under the buttons; `approved` stays) | page |
+| `notes/<id>` | `cut` (a cut or set key), `t` (seconds or null; on a set note, in that clip item's video), `tEnd` (seconds or null: with `t`, the note covers the range `t`–`tEnd`), `region` (`{x, y, w, h}` as fractions of the picture, or null; on a set note, of that item's still image), `item` (set item name or null), `line` (0-based index into the cut's `script`, or null: a note on a script line, with `t`–`tEnd` set to the line's times), `quote` (the words or characters of that line the note is about, or null), `qStart`/`qEnd` (where `quote` sits in the line's spoken text, character offsets, or null; the spoken text is the line with cues such as `[whisper]` removed and white space collapsed, computed the same way by the page and `notes.spoken`), `take` (null, or `{asset, seconds, type}`: a voice take of how the line should sound, only on notes with `line`; `asset` is the asset id (32 hex), `seconds` its length, `type` the stored content type, `video/mp4` or `video/webm`; `cut-review notes` shows it as a `take:` row), `text`, `status` (`open`, `fixed`, `resolved`, `wontfix`), `reply`, `fixedIn`, `version` (of the cut when written), `by` (the writer's user id, or `claude` for a carried note), `createdAt`, `editedAt` (set when the owner edits the text; editing a `fixed` note sets it back to `open`), `from` (`{cut, id}` on a note Claude carried from another cut's note that said it applies there too, else absent) | page (owner), CLI `fix` and `carry` (Claude) |
+| `verdicts/<key>` | `state` (`none` or `approved`; an older room's `changes` reads as `none`), `version`, `at`. There is no Needs changes button: a cut with unresolved notes (open or fixed) needs changes by itself (amber dot), and Approve is disabled, with "Resolve the N open notes to approve.", until every note is resolved or won't fix | page |
 
 Layout ("script under the picture", from the Claude Design board *Review Room Layouts*, option 1b): a top bar with the
-room's title; the cut list on the left (one line per cut: verdict dot, name, open-note count; a chip row on phones);
+room's title; the cut list on the left (one line per cut: status dot, name, open-note count; a chip row on phones);
 the player in the middle with the cut's title, facts, sound-version switch and version menu above it, a transport row
 (play, frame steps, time and frame, the timeline with a thin notes lane right above it, speed (one button stepping 1×, 1.5×, 2×, 0.5×), loop, download) under it, and the script following
-along beneath; notes on the right with the note form docked under them and the verdict (Needs changes, Approve vN)
+along beneath; notes on the right with the note form docked under them and the verdict (Approve vN)
 at the foot. Below 1180 px the notes go under the picture and the page scrolls as one. One blue for open, amber for
 fixed and needs changes, green for resolved and approved, grey for won't fix; Geist and Geist Mono.
 
@@ -49,19 +49,19 @@ tinted with a note icon at its start so it reads as the place for comments, as w
 stays paused on its start),
 notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging in the
 notes lane or `i` / `o` fill them too; shown as a bar in the lane) and on a region of the frame
-(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Active = open + fixed, All), a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
+(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Unresolved = open + fixed, Resolved = resolved + won't fix, All; unresolved notes always come first, in timeline order); Resolve on an open note, Edit (your own open or fixed notes, in place: Enter saves, Esc cancels) and Delete (your own open notes); a box just drawn on the frame floats the note form next to it, over the page ("Box · time", Esc drops the box); a note Claude carried from another cut says "Claude" with a "from <cut>" link to the original, a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
 turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a line's time to jump there) and takes notes on a word (tap it;
 tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
 on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
 leaves the line and puts the form back in the notes panel); commented words are underlined by status and tapping one shows its note, fixed notes show Claude's reply
-with "Looks right" / "Still wrong", a version menu per cut beside the title (see Versions below), a verdict per cut (pressing the one that is on sets it back to unreviewed), a phone layout with a chip row,
+with "Looks right" / "Still wrong", a version menu per cut beside the title (see Versions below), Approve per cut (pressing it again sets it back to unreviewed), a phone layout with a chip row,
 deep links by `#<key>` (an unknown key shows the first cut, corrects the address and says so), light and dark themes.
 
 Versions: a version menu per cut beside the title (hidden at v1: "v3 · current · <change>",
 then each past version newest first, "v2 · <change>"; versions from before `history` was kept are greyed, "v1 · not
 kept"). Picking a past version shows it read-only: its video and poster (no sound-version switch), its script when
 it kept one, a set's items as they were, and only the notes written on that version (`version`), in every status,
-on the notes panel, timeline, boxes and script; the note form, the verdict and the Active/All filter are hidden, n i
+on the notes panel, timeline, boxes and script; the note form, the verdict and the notes filter are hidden, n i
 o r, taps on words and drags in the notes lane (which scrubs there) start nothing, and a "Viewing v2, read-only" bar has "Back to v3". Another cut or set, or
 "Back", returns to the current version; `#<key>@v2` links to a past version. On a cut with a kept past version (never a set),
 **Compare** shows beside the version menu only while a kept past version is open (and while comparing): it puts that

@@ -227,6 +227,9 @@ button { cursor: pointer; }
 .note .tk { border: 1px solid var(--line3); background: none; border-radius: 99px; padding: 0 8px; font-size: 11px; color: var(--muted); }
 .note .quote { font-style: italic; color: var(--muted); font-size: 13px; }
 .note .body { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.editbox { display: flex; flex-direction: column; gap: 6px; }
+.editbox textarea { width: 100%; min-height: 44px; resize: vertical; border: 1px solid var(--line3); border-radius: 8px; background: var(--panel); padding: 8px 10px; font-size: 13px; line-height: 1.45; }
+.note .tk.from { color: var(--open); }
 .reply { font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply b { font-weight: 500; color: var(--ink2); }
 .note audio { width: 100%; height: 32px; }
@@ -276,11 +279,11 @@ button { cursor: pointer; }
   background: var(--panel); border: 1px solid var(--line3); border-radius: 10px; box-shadow: var(--shadow); }
 .composer.pop .times, .composer.pop #pickRow, .composer.pop .kbd { display: none; }
 .composer:not(.pop) .esc, .composer:not(.pop) .linetarget { display: none; }
+/* on a box just drawn, the form floats next to the box, over the page */
+.composer.pop.onbox { position: fixed; z-index: 25; }
 
 .verdict { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
 .verdict button { flex: 1; font-size: 13px; padding: 9px 12px; border-radius: 8px; }
-.verdict [data-v="changes"] { border: 1px solid var(--fixed-line); background: none; color: var(--fixed); }
-.verdict [data-v="changes"][aria-pressed="true"] { background: var(--fixed-soft); font-weight: 500; }
 .verdict [data-v="approved"] { border: 1px solid var(--solid); background: var(--solid); color: var(--solid-ink); }
 .verdict [data-v="approved"][aria-pressed="true"] { background: var(--good-soft); border-color: var(--good-dot); color: var(--good); font-weight: 500; }
 .verdict button:disabled { opacity: 0.5; cursor: default; }
@@ -427,7 +430,7 @@ button { cursor: pointer; }
 
   <aside class="panel" aria-label="Notes">
     <div class="panelhd"><b id="openN">No notes</b><span id="fixedN"></span><span class="grow"></span>
-      <span class="filter seg" id="filter"><button data-f="active" aria-pressed="true" title="Open and fixed notes">Active</button><button data-f="all" aria-pressed="false">All</button></span></div>
+      <span class="filter seg" id="filter"><button data-f="active" aria-pressed="true" title="Open notes and fixes waiting for you">Unresolved</button><button data-f="done" aria-pressed="false">Resolved</button><button data-f="all" aria-pressed="false">All</button></span></div>
     <div class="notes" id="notes"></div>
     <div class="dock" id="dock"><div class="composer" id="composer">
       <p class="linetarget" id="lineTarget" hidden><span id="lineTargetN"></span><span class="q" id="lineTargetQ"></span></p>
@@ -463,7 +466,6 @@ button { cursor: pointer; }
     </div></div>
     <div class="verdict" id="verdict" role="group" aria-label="Verdict">
       <p class="stale" id="staleV" hidden></p>
-      <button data-v="changes" aria-pressed="false">Needs changes</button>
       <button data-v="approved" aria-pressed="false">Approve</button>
     </div>
   </aside>
@@ -476,7 +478,7 @@ button { cursor: pointer; }
   const $ = (id) => ids[id] || (ids[id] = document.getElementById(id));   // every element with an id lives as long as the page
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
-              sel: null, viewV: null, cmp: null, cmpSound: "cur", filter: "active", stampT: 0, stampLocked: false, item: null,
+              sel: null, viewV: null, cmp: null, cmpSound: "cur", filter: "active", editing: null, editText: null, stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
               assets: null, mic: false, take: null, takeBusy: false, saving: false, loaded: {} };
@@ -517,8 +519,10 @@ button { cursor: pointer; }
   };
   // the past versions a cut can be compared with: the kept ones, newest first (never a set's)
   const keptOf = (e) => e?.kind === "cut" ? (e.history || []).filter((h) => h.video).sort((a, b) => b.v - a.v) : [];
-  // a "Needs changes" given on an older version than the one in the room no longer counts; an approval stays
-  const verdictOf = (key) => { const v = S.verdicts[key]; return v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v; };
+  // the only verdict is an approval: a cut with unresolved notes needs changes by itself (an old "changes" counts as none)
+  const unresolved = (n) => n.status === "open" || n.status === "fixed";
+  const unresolvedOn = (key) => S.notes.filter((n) => n.cut === key && unresolved(n)).length;
+  const approvedOn = (key) => S.verdicts[key]?.state === "approved" && !unresolvedOn(key);
 
   // the cut list is built once per set of entries; a snapshot only updates its dots, counts and the tally
   let sideSig = "";
@@ -559,8 +563,7 @@ button { cursor: pointer; }
     for (const n of S.notes) { total.set(n.cut, (total.get(n.cut) || 0) + 1); if (n.status === "open") open.set(n.cut, (open.get(n.cut) || 0) + 1); }
     for (const [key, x] of sideBtns) {
       setAttr(x.b, "aria-current", String(S.sel === key));
-      const v = verdictOf(key)?.state;
-      setCls(x.dot, "dot" + (v === "approved" ? " approved" : v === "changes" ? " changes" : ""));
+      setCls(x.dot, "dot" + (approvedOn(key) ? " approved" : unresolvedOn(key) ? " changes" : ""));
       const o = open.get(key) || 0;
       setCls(x.count, "count" + (o ? " open" : ""));
       setText(x.count, o ? String(o) : total.get(key) ? "✓" : "");
@@ -710,18 +713,16 @@ button { cursor: pointer; }
   }
 
   // ---------- verdict
+  // one button: Approve, held back while any note on the cut is unresolved (those notes say it needs changes)
   function renderVerdict() {
-    const v = verdictOf(S.sel)?.state || "none", ver = "v" + (rawEntry(S.sel)?.version || 1), raw = S.verdicts[S.sel];
-    const stale = raw?.state === "changes" && v === "none";
-    $("staleV").hidden = !stale;
-    if (stale) setText($("staleV"), "Needs changes on v" + raw.version);
-    for (const b of $("verdict").querySelectorAll("button")) {
-      setAttr(b, "aria-pressed", String(b.dataset.v === v));
-      b.disabled = !S.db || !S.canWrite;
-      if (b.dataset.v === "approved") setText(b, (v === "approved" ? "Approved " : "Approve ") + ver);
-      const tip = b.dataset.v === v ? "Press again to mark it unreviewed" : "";
-      if (b.title !== tip) b.title = tip;
-    }
+    const ok = approvedOn(S.sel), left = unresolvedOn(S.sel), ver = "v" + (rawEntry(S.sel)?.version || 1), b = $("verdict").querySelector("button");
+    $("staleV").hidden = !left;
+    if (left) setText($("staleV"), "Resolve " + (left === 1 ? "the open note" : "the " + left + " open notes") + " to approve.");
+    setAttr(b, "aria-pressed", String(ok));
+    b.disabled = !S.db || !S.canWrite || !!left;
+    setText(b, (ok ? "Approved " : "Approve ") + ver);
+    const tip = ok ? "Press again to mark it unreviewed" : "";
+    if (b.title !== tip) b.title = tip;
   }
   $("verdict").addEventListener("click", async (ev) => {
     const b = ev.target.closest("button"); if (!b || !S.db || !S.sel) return;
@@ -872,12 +873,25 @@ button { cursor: pointer; }
   function placeComposer() {
     const c = $("composer"), row = S.line && !$("scriptCard").hidden && scriptRows[S.line.i]?.tr;
     const typing = document.activeElement === $("noteText");
+    // a box set for the new note: the form floats under it (above it when there is no room below), over the page
+    const boxed = !row && S.region && !S.drawing && draftBox?.isConnected && draftBox.getBoundingClientRect();
     if (row) {
       if (c.parentNode !== $("scriptBox")) $("scriptBox").append(c);
-      c.classList.add("pop");
+      c.classList.add("pop"); c.classList.remove("onbox"); c.style.left = "";
       c.style.top = (row.offsetTop + row.offsetHeight + 4) + "px";
+    } else if (boxed && boxed.width) {
+      if (c.parentNode !== document.body) document.body.append(c);
+      c.classList.add("pop", "onbox");
+      const W = Math.min(340, innerWidth - 16), H = c.offsetHeight || 150;
+      const below = boxed.bottom + 8, above = boxed.top - 8 - H;
+      const top = below + H <= innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, innerHeight - H - 8);
+      c.style.width = W + "px";
+      c.style.left = Math.round(Math.max(8, Math.min(boxed.left, innerWidth - W - 8))) + "px";
+      c.style.top = Math.round(top) + "px";
+      $("lineTarget").hidden = false; $("lineTargetN").textContent = "Box ·";
+      $("lineTargetQ").textContent = entryOf(S.sel)?.kind === "set" ? S.item || "" : $("general").checked ? "whole cut" : fmt(S.stampT) + (S.stampEnd != null ? "–" + fmt(S.stampEnd) : "");
     } else if (c.parentNode !== $("dock")) {
-      $("dock").append(c); c.classList.remove("pop"); c.style.top = "";
+      $("dock").append(c); c.classList.remove("pop", "onbox"); c.style.top = c.style.left = c.style.width = "";
     }
     if (typing && document.activeElement !== $("noteText")) $("noteText").focus({ preventScroll: true });
   }
@@ -892,7 +906,11 @@ button { cursor: pointer; }
     const plain = spokenOf(scriptOf(entryOf(S.sel))[l.i]?.text ?? "");
     $("lineTargetQ").textContent = l.quote ? "“" + l.quote + "”" : plain;
   }
-  $("b-unline").onclick = () => { S.line = null; renderLineTarget(); renderScriptMarks(); };
+  $("b-unline").onclick = () => {
+    if (S.line) { S.line = null; renderLineTarget(); renderScriptMarks(); return; }
+    S.region = null; updateStamp(); renderRegions();   // the box the form floats on
+  };
+  for (const t of ["resize", "scroll"]) addEventListener(t, () => { if ($("composer").classList.contains("onbox")) placeComposer(); }, { passive: true, capture: true });
   // the floating Comment button: shown at a selection inside one script line, below it (phones show their own
   // copy/paste menu above a selection)
   let selFor = null;
@@ -1291,7 +1309,7 @@ button { cursor: pointer; }
   $("noteText").addEventListener("input", () => { const off = !canAdd(); if ($("b-add").disabled !== off) $("b-add").disabled = off; });
   $("noteText").addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); addNote(); }
-    else if (ev.key === "Escape" && S.line) { ev.preventDefault(); $("b-unline").click(); }
+    else if (ev.key === "Escape" && (S.line || S.region)) { ev.preventDefault(); $("b-unline").click(); }
   });
   const leaveTimes = () => { if (/^t(From|To)$/.test(document.activeElement?.id || "")) document.activeElement.blur(); };
   $("b-restamp").onclick = () => {
@@ -1461,8 +1479,7 @@ button { cursor: pointer; }
     if (n.t == null) return vid.paused;
     return n.tEnd != null ? t >= n.t - pad && t <= n.tEnd + pad : Math.abs(t - n.t) <= pad;
   };
-  const live = (n) => n.status === "open" || n.status === "fixed";
-  const shownOnCut = (t) => notesForSel().filter((n) => reg(n.region) && (n.id === S.focus || ((S.viewV || live(n)) && inWindow(n, t))));
+  const shownOnCut = (t) => notesForSel().filter((n) => reg(n.region) && (n.id === S.focus || ((S.viewV || unresolved(n)) && inWindow(n, t))));
   // per frame: only which notes' boxes show on the cut is checked; the boxes are rebuilt when that changes
   let shownKey = "";
   function regionsFollow(t) {
@@ -1492,7 +1509,7 @@ button { cursor: pointer; }
         const m = x.media, img = x.img;
         const p = img.naturalWidth ? fit(m.clientWidth, m.clientHeight, img.naturalWidth, img.naturalHeight)
           : { left: 0, top: 0, w: m.clientWidth, h: m.clientHeight };
-        const shown = notesForSel().filter((n) => n.item === name && reg(n.region) && (n.id === S.focus || S.viewV || live(n)));
+        const shown = notesForSel().filter((n) => n.item === name && reg(n.region) && (n.id === S.focus || S.viewV || unresolved(n)));
         drawBoxes(x.rg, p, shown.map((n) => [n.status, reg(n.region), null]));
       }
     } else if (e?.kind !== "cut") { box.hidden = true; delete box.dataset.key; shownKey = ""; }
@@ -1512,11 +1529,12 @@ button { cursor: pointer; }
     const k = host ? [draft.x, draft.y, draft.w, draft.h, !!S.draft].join() : "";
     if (k === draftKey && (!draftBox || draftBox.parentNode === host)) return;
     draftKey = k;
-    if (!host) { if (draftBox) draftBox.remove(); draftBox = null; return; }
+    if (!host) { if (draftBox) draftBox.remove(); draftBox = null; placeComposer(); return; }
     if (!draftBox) { draftBox = el("div", "box draft"); draftBox.append(el("span", "lbl", "new note")); }
     if (draftBox.parentNode !== host) host.append(draftBox);
     draftBox.firstChild.hidden = !!S.draft;
     place(draftBox, draft);
+    placeComposer();
   }
   const draftSoon = perFrame(renderDraft);
   // pointer positions as fractions of the overlay, against its box read once at the press
@@ -1640,11 +1658,20 @@ button { cursor: pointer; }
       b.onclick = () => { focusNote(n); if (!isSet && n.line != null) showLine(+n.line); };
       top.append(b);
     } else top.append(el("span", "t", lbl));
-    top.append(el("span", "who", (n.by && n.by === S.me ? "You" : "Reviewer") + " · v" + (n.version || 1)));
+    const mine = !!n.by && n.by === S.me;
+    top.append(el("span", "who", (mine ? "You" : n.by === "claude" ? "Claude" : "Reviewer") + " · v" + (n.version || 1) + (n.editedAt ? " · edited" : "")));
+    // Claude's copy of a note that said it applies to other cuts too: a link back to the note it came from
+    const src = n.from && typeof n.from === "object" && rawEntry(n.from.cut);
+    if (src) {
+      const b = el("button", "tk from", "from " + (src.short || src.title || src.key)); b.title = "Show the note this came from";
+      b.onclick = () => { select(src.key, true); const o = S.notes.find((x) => x.id === n.from.id); if (o) focusNote(o); };
+      top.append(b);
+    }
     top.append(el("span", "st", n.status === "fixed" ? (n.fixedIn ? "Fixed in v" + n.fixedIn : "Fixed") : n.status === "open" ? "" : STATUS_LABEL[n.status] || n.status));
     card.append(top);
     if (n.quote) card.append(el("div", "quote", "“" + n.quote + "”"));
-    if (n.text) card.append(el("div", "body", n.text));   // a take-only note has no words
+    if (S.editing === n.id) card.append(editBox(n));
+    else if (n.text) card.append(el("div", "body", n.text));   // a take-only note has no words
     const take = !isSet && takeOf(n);
     if (take) {
       const a = el("audio"); a.controls = true; a.preload = "none"; a.src = "/_blob/" + take.asset;
@@ -1654,14 +1681,44 @@ button { cursor: pointer; }
     }
     if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude: "), document.createTextNode(n.reply)); card.append(r); }
     const acts = el("div", "acts");
-    if (S.canWrite && S.db && !S.viewV) {
+    if (S.canWrite && S.db && !S.viewV && S.editing !== n.id) {
       if (n.status === "fixed") acts.append(act("Looks right", () => setStatus(n, "resolved"), true), act("Still wrong", () => setStatus(n, "open")));
+      if (n.status === "open") acts.append(act("Resolve", () => setStatus(n, "resolved")));
       if (n.status === "resolved" || n.status === "wontfix") acts.append(act("Reopen", () => setStatus(n, "open")));
-      if (n.status === "open" && n.by && n.by === S.me) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete()
+      if (mine && unresolved(n)) acts.append(act("Edit", () => { S.editing = n.id; S.editText = n.text || ""; renderNotes(); }));
+      if (n.status === "open" && mine) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete()
         .then(() => { const t = takeOf(n); if (t && S.assets) S.assets.delete(t.asset).catch(() => {}); }).catch(onWriteError)));
     }
     if (acts.childNodes.length) card.append(acts);
     return card;
+  }
+  // editing a note in place: Enter (or Save) writes it, Esc (or Cancel) leaves it as it was. A fixed note that is
+  // edited is open again, since the fix answered the old words.
+  function editBox(n) {
+    const box = el("div", "editbox"), ta = el("textarea"), save = act("Save", null, true), cancel = act("Cancel");
+    ta.rows = 2; ta.value = S.editText ?? n.text ?? ""; ta.setAttribute("aria-label", "Edit the note");
+    const empty = () => !ta.value.trim() && !takeOf(n);   // a take-only note may stay without words
+    save.disabled = empty();
+    ta.oninput = () => { S.editText = ta.value; save.disabled = empty(); };
+    const done = () => { S.editing = null; S.editText = null; renderNotes(); };
+    save.onclick = async () => {
+      if (empty() || save.disabled) return;
+      const text = ta.value.trim();
+      if (text === (n.text || "")) { done(); return; }
+      save.disabled = true;
+      const data = { text, editedAt: new Date().toISOString() };
+      if (n.status === "fixed") Object.assign(data, { status: "open", statusAt: data.editedAt });
+      try { await S.db.doc("notes/" + n.id).update(data); done(); } catch (err) { save.disabled = false; onWriteError(err); }
+    };
+    cancel.onclick = done;
+    ta.onkeydown = (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); save.click(); }
+      else if (ev.key === "Escape") { ev.preventDefault(); done(); }
+    };
+    const row = el("div", "acts"); row.append(save, cancel);
+    box.append(ta, row);
+    requestAnimationFrame(() => { if (ta.isConnected && document.activeElement !== ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } });
+    return box;
   }
   function renderNotes() {
     const box = $("notes");
@@ -1670,15 +1727,16 @@ button { cursor: pointer; }
     const nOpen = all.filter((n) => n.status === "open").length, nFixed = all.filter((n) => n.status === "fixed").length;
     setText($("openN"), nOpen ? nOpen + " open" : all.length ? "Nothing open" : "No notes");
     setText($("fixedN"), nFixed ? "· " + nFixed + " fixed" : "");
-    let list = all;
-    if (S.filter === "active" && !S.viewV) list = list.filter((n) => n.status === "open" || n.status === "fixed");
+    // unresolved notes always come first, in timeline order; the resolved ones follow (a stable sort keeps the time order)
+    let list = S.viewV ? all : all.filter((n) => S.filter === "all" || (S.filter === "done") !== unresolved(n));
+    list = list.slice().sort((a, b) => unresolved(b) - unresolved(a));
     let msg = null;
     if (!S.db) { msg = "Notes need you to be signed in to claude.ai."; list = []; }
     else if (!list.length) {
-      msg = S.viewV ? "No notes were written on v" + S.viewV + "." : all.length ? "Nothing open here. Switch to All to see resolved notes." :
+      msg = S.viewV ? "No notes were written on v" + S.viewV + "." : all.length ? (S.filter === "done" ? "Nothing resolved yet." : "Nothing unresolved here. Switch to Resolved or All to see the rest.") :
         isSet ? "No notes yet. Pick an item and write what should change." : "No notes yet. Pause on a frame, or select words in the script, and write what should change.";
     }
-    const ctx = [isSet, S.canWrite, !!S.db, S.me, S.viewV].join();
+    const ctx = [isSet, S.canWrite, !!S.db, S.me, S.viewV, S.editing].join();
     const want = [];
     for (const n of list) {
       const sig = ctx + JSON.stringify(n);
@@ -1866,7 +1924,7 @@ button { cursor: pointer; }
       drawAsked = false;
       const d = new Set(dirty); dirty.clear();
       if (d.has("room")) { refresh(); return; }       // refresh draws everything
-      if (d.has("notes")) { renderSide(); renderNotes(); renderCompare(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
+      if (d.has("notes")) { renderSide(); renderNotes(); renderVerdict(); renderCompare(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
       if (d.has("verdicts")) { renderSide(); renderVerdict(); }
     };
     if (document.hidden) setTimeout(go, 0); else requestAnimationFrame(go);   // hidden pages get no frames

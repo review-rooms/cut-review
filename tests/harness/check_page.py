@@ -169,7 +169,13 @@ with sync_playwright() as p:
     pg.mouse.move(vb["x"] + vb["width"] * .3, vb["y"] + vb["height"] * .3); pg.mouse.down()
     for i in range(15): pg.mouse.move(vb["x"] + vb["width"] * (.3 + .3 * i / 14), vb["y"] + vb["height"] * (.3 + .2 * i / 14))
     pg.mouse.up(); pg.wait_for_timeout(300)
+    cb, bb = pg.locator("#composer").bounding_box(), pg.locator("#regions .box.draft").bounding_box()
+    check("a new box floats the note form next to it, focused", J("document.getElementById('composer').classList.contains('onbox')")
+          and J("document.activeElement.id") == "noteText" and J("document.getElementById('lineTargetN').textContent") == "Box ·"
+          and abs(cb["x"] - max(8, min(bb["x"], W - cb["width"] - 8))) < 2 and (cb["y"] >= bb["y"] + bb["height"] - 1 or cb["y"] + cb["height"] <= bb["y"] + 1 or abs(cb["y"] + cb["height"] - (H - 8)) < 2)
+          and cb["x"] >= 0 and cb["x"] + cb["width"] <= W and cb["y"] >= 0 and cb["y"] + cb["height"] <= H)
     pg.locator("#b-add").click(); pg.wait_for_timeout(600)
+    check("adding puts the form back in the notes panel", J("document.getElementById('composer').parentNode.id") == "dock")
     n = [x for x in store("notes") if x["cut"] == "teaser"]
     check("note saved with range and region", len(n) == 1 and n[0]["t"] == 1.5 and n[0]["tEnd"] is not None and n[0]["region"] and n[0]["region"]["w"] > .2)
     check("note card and timeline mark shown", pg.locator("#notes .note").count() == 1 and pg.locator("#lane .mark").count() == 1)
@@ -201,11 +207,51 @@ with sync_playwright() as p:
     pg.locator("#noteText").fill("Say it warmer"); pg.keyboard.press("Enter"); pg.wait_for_timeout(600)
     n = [x for x in store("notes") if x["cut"] == "teaser" and x.get("line") == 0]
     check("a note on a word saves its line and quote", len(n) == 1 and n[0]["quote"] == "answer" and J("document.getElementById('composer').parentNode.id") == "dock")
-    # the verdict toggles: press the one that is on to go back to unreviewed
-    pg.locator('#verdict [data-v="changes"]').click(); pg.wait_for_timeout(300)
+    # Esc on a floating box form drops the box
+    pg.locator("#vid").scroll_into_view_if_needed(); vb = pg.locator("#vid").bounding_box()
+    pg.mouse.move(vb["x"] + vb["width"] * .5, vb["y"] + vb["height"] * .5); pg.mouse.down()
+    for i in range(10): pg.mouse.move(vb["x"] + vb["width"] * (.5 + .2 * i / 9), vb["y"] + vb["height"] * (.5 + .2 * i / 9))
+    pg.mouse.up(); pg.wait_for_timeout(300)
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
+    check("Esc drops the box and the form goes back", J("document.getElementById('composer').parentNode.id") == "dock" and pg.locator("#regions .box.draft").count() == 0)
+    # unresolved notes hold Approve back (no Needs changes button any more)
+    check("only an Approve button", pg.locator("#verdict button").count() == 1)
+    check("Approve waits for the 3 open notes", J("document.querySelector('#verdict button').disabled")
+          and J("document.getElementById('staleV').textContent") == "Resolve the 3 open notes to approve."
+          and pg.locator('.cutbtn[aria-current="true"] .dot.changes').count() == 1)
+    # editing your own note
+    card = pg.locator("#notes .note").filter(has_text="Too long here")
+    card.get_by_role("button", name="Edit").click(); pg.wait_for_timeout(200)
+    pg.locator("#notes .editbox textarea").fill("Too long, trim a second"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
+    n = [x for x in store("notes") if x["text"] == "Too long, trim a second"]
+    check("Edit rewrites the note in place", len(n) == 1 and n[0].get("editedAt") and n[0]["status"] == "open"
+          and pg.locator("#notes .note .body").filter(has_text="Too long, trim a second").count() == 1 and pg.locator("#notes .editbox").count() == 0)
+    nid = J("Object.entries(window.__store.notes).find(([, x]) => x.text === 'Too long, trim a second')[0]")
+    J(f"window.__db.doc('notes/{nid}').update({{status: 'fixed', reply: 'Trimmed.', fixedIn: 2}})"); pg.wait_for_timeout(400)
+    card = pg.locator("#notes .note").filter(has_text="Too long, trim a second")
+    card.get_by_role("button", name="Edit").click(); pg.wait_for_timeout(200)
+    pg.locator("#notes .editbox textarea").fill("Too long, trim two seconds"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
+    check("editing a fixed note reopens it", J(f"window.__store.notes['{nid}'].status") == "open")
+    # resolving: unresolved first in time order, the filter splits them
+    first = pg.locator("#notes .note").first
+    first.get_by_role("button", name="Resolve").click(); pg.wait_for_timeout(400)
+    check("Resolve hides it from Unresolved", pg.locator("#notes .note").count() == 2)
+    pg.locator('#filter [data-f="all"]').click(); pg.wait_for_timeout(200)
+    st = J("[...document.querySelectorAll('#notes .note')].map((c) => c.classList.contains('resolved'))")
+    check(f"All: unresolved on top, resolved after ({st})", st == [False, False, True])
+    ts = J("[...document.querySelectorAll('#notes .note:not(.resolved)')].map((c) => window.__store.notes[c.dataset.id].t)")
+    check(f"unresolved notes in timeline order ({ts})", ts == sorted(ts))
+    pg.locator('#filter [data-f="done"]').click(); pg.wait_for_timeout(200)
+    check("Resolved shows only resolved notes", pg.locator("#notes .note").count() == 1 and pg.locator("#notes .note.resolved").count() == 1)
+    pg.locator('#filter [data-f="active"]').click(); pg.wait_for_timeout(200)
+    for _ in range(2): pg.locator("#notes .note").first.get_by_role("button", name="Resolve").click(); pg.wait_for_timeout(400)
+    check("every note resolved: Approve is free", not J("document.querySelector('#verdict button').disabled") and J("document.getElementById('staleV').hidden"))
+    # the verdict toggles: press it again to go back to unreviewed
+    pg.locator("#verdict button").click(); pg.wait_for_timeout(300)
     on = J("window.__store.verdicts.teaser && window.__store.verdicts.teaser.state")
-    pg.locator('#verdict [data-v="changes"]').click(); pg.wait_for_timeout(300)
-    check("verdict toggles on and back off", on == "changes" and J("window.__store.verdicts.teaser.state") == "none")
+    pg.locator("#verdict button").click(); pg.wait_for_timeout(300)
+    check("Approve toggles on and back off", on == "approved" and J("window.__store.verdicts.teaser.state") == "none")
+    pg.locator('#filter [data-f="all"]').click(); pg.wait_for_timeout(200)
     # a plain click on the picture plays
     J("document.getElementById('vid').pause()"); pg.locator("#vid").click(); pg.wait_for_timeout(300)
     check("clicking the picture plays", not J("document.getElementById('vid').paused")); J("document.getElementById('vid').pause()")
@@ -255,9 +301,9 @@ with sync_playwright() as p:
     opts = J("[...document.querySelectorAll('#verSel option')].map((o) => [o.textContent, o.disabled])")
     check(f"version menu lists current, kept and not-kept versions ({opts})", not J("document.getElementById('verSel').hidden")
           and opts == [["v3 · current · Quieter music", False], ["v2 · Bigger logo", False], ["v1 · not kept", True]])
-    check("a Needs changes on v2 isn't pressed on v3, and says so", J("[...document.querySelectorAll('#verdict button')].every((b) => b.getAttribute('aria-pressed') === 'false')")
-          and J("!document.getElementById('staleV').hidden && document.getElementById('staleV').textContent") == "Needs changes on v2")
-    check("the cut list dot isn't amber for a stale verdict", J("!document.querySelector('.cutbtn[aria-current=\"true\"] .dot').classList.contains('changes')"))
+    check("an old Needs changes counts as nothing; the open note holds Approve", J("document.querySelector('#verdict button').getAttribute('aria-pressed')") == "false"
+          and J("document.getElementById('staleV').textContent") == "Resolve the open note to approve.")
+    check("the cut list dot is amber for the open note", J("document.querySelector('.cutbtn[aria-current=\"true\"] .dot').classList.contains('changes')"))
     check("current version: only v3's active note", J("[...document.querySelectorAll('#notes .note .body')].map((b) => b.textContent)") == ["Music too loud"])
     check("current version: the sound switch shows", not J("document.getElementById('versions').hidden"))
     pg.select_option("#verSel", "2"); pg.wait_for_timeout(500)
@@ -287,9 +333,20 @@ with sync_playwright() as p:
     pg.locator(".cutbtn").filter(has_text="Teaser").first.click(); pg.wait_for_timeout(300)
     pg.locator(".cutbtn").filter(has_text="Explainer").first.click(); pg.wait_for_timeout(400)
     check("switching cut returns to the current version", J("document.getElementById('pastBar').hidden") and J("document.getElementById('verSel').value") == "3")
-    pg.locator('#verdict [data-v="changes"]').click(); pg.wait_for_timeout(300)
-    check("pressing Needs changes writes it for v3", J("window.__store.verdicts.explainer.version") == 3
-          and J("document.querySelector('#verdict [data-v=\"changes\"]').getAttribute('aria-pressed')") == "true" and J("document.getElementById('staleV').hidden"))
+    # Claude's copy of the open note on the teaser links back to it
+    J("""window.__db.doc('notes/new--teaser').set({ cut: 'teaser', t: null, tEnd: null, region: null, item: null, line: null, quote: null,
+      qStart: null, qEnd: null, text: 'Music too loud', status: 'open', reply: '', by: 'claude', from: { cut: 'explainer', id: 'new' },
+      version: 1, createdAt: '2026-11-03T10:00:00Z' })"""); pg.wait_for_timeout(300)
+    pg.locator(".cutbtn").filter(has_text="Teaser").first.click(); pg.wait_for_timeout(400)
+    copy = pg.locator("#notes .note").filter(has_text="Music too loud")
+    check("a carried note says Claude and where it came from", copy.count() == 1 and "Claude" in copy.locator(".who").text_content()
+          and copy.locator(".from").count() == 1 and copy.get_by_role("button", name="Edit").count() == 0)
+    copy.locator(".from").click(); pg.wait_for_timeout(500)
+    check("its link opens the original note", J("location.hash") == "#explainer" and pg.locator("#notes .note.focus").filter(has_text="Music too loud").count() == 1)
+    pg.locator("#notes .note.focus").get_by_role("button", name="Resolve").click(); pg.wait_for_timeout(400)
+    pg.locator("#verdict button").click(); pg.wait_for_timeout(300)
+    check("resolved, then Approve writes it for v3", J("window.__store.verdicts.explainer.version") == 3 and J("window.__store.verdicts.explainer.state") == "approved"
+          and J("document.querySelector('#verdict button').getAttribute('aria-pressed')") == "true" and J("document.getElementById('staleV').hidden"))
     check("no page errors (versions)", not errs)
     if errs: print(errs)
     ctx.close()

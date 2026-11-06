@@ -15,7 +15,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
-from .notes import extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
+from .notes import carry_writes, extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, sha256
@@ -311,6 +311,11 @@ def cmd_fix(a) -> int:
     return 0
 
 
+def cmd_carry(a) -> int:
+    _print_batches(carry_writes(Room.load(a.room), a.id, [k.strip() for k in a.to.split(",") if k.strip()], a.text), "notes")
+    return 0
+
+
 def cmd_status(a) -> int:
     room = Room.load(a.room)
     print(f"Room:    {room.manifest.get('title')}  ({room.dir})")
@@ -394,6 +399,12 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--from", dest="source", help="JSON file: {id: reply} or [{id, reply}]")
     s.add_argument("--status", default="fixed", choices=["fixed", "wontfix"])
     s.set_defaults(fn=cmd_fix)
+
+    s = sub.add_parser("carry", help="copy a note onto other cuts it says it applies to, linked back to it")
+    s.add_argument("id", help="the owner's note id")
+    s.add_argument("--to", required=True, help="comma-separated cut or set keys")
+    s.add_argument("--text", help="the words for the copies (default: the note's own)")
+    s.set_defaults(fn=cmd_carry)
 
     s = sub.add_parser("status", help="what is uploaded, built and written")
     s.set_defaults(fn=cmd_status)

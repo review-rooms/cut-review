@@ -194,7 +194,9 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
         lines.append(f"## {key}: {titles.get(key, '(not in room.json)')}" + (f" (now v{ver})" if ver else ""))
         for n in mine:
             text = n["text"] or ("(no words: listen to the take)" if n.get("take") else "")
-            lines.append(f"- [{n.get('status')}] {where(n)} · {text}  (id {n['id']}, written on v{n.get('version', 1)})")
+            src = n.get("from") if isinstance(n.get("from"), dict) else None
+            carried = f", carried from {src.get('cut')} note {src.get('id')}" if src else ""
+            lines.append(f"- [{n.get('status')}] {where(n)} · {text}  (id {n['id']}, written on v{n.get('version', 1)}{carried})")
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
                 lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")
@@ -324,4 +326,36 @@ def fix_writes(room: Room, replies: dict[str, str], status: str = "fixed") -> li
         path = outdir / f"notes__{nid}.json"
         path.write_text(json.dumps(data, ensure_ascii=False) + "\n")
         writes.append({"op": "update", "collection": "notes", "doc_id": nid, "file_path": str(path), "if_version": n["dbVersion"]})
+    return writes
+
+
+def carry_writes(room: Room, note_id: str, targets: list[str], text: str | None = None) -> list[dict]:
+    """Set writes that copy an owner's note onto other cuts or sets it says it applies to, as Claude's open notes
+    linked back to it (`from`), so the point isn't lost there. A cut that already has a copy of it is skipped."""
+    notes = saved_notes(room)
+    src = next((n for n in notes if n["id"] == note_id), None)
+    if not src:
+        raise RoomError(f"note {note_id} is not in the last export (run `cut-review notes DIR` again)")
+    keys = {e["key"]: kind for kind in ("cuts", "sets") for e in room.manifest.get(kind, [])}
+    have = {n["cut"] for n in notes if isinstance(n.get("from"), dict) and n["from"].get("id") == note_id}
+    words = (text or src.get("text") or "").strip()
+    if not words:
+        raise RoomError(f"note {note_id} has no words to carry (a take-only note): give --text")
+    outdir = room.state_dir / "out"
+    outdir.mkdir(parents=True, exist_ok=True)
+    writes = []
+    for key in dict.fromkeys(targets):
+        if key not in keys:
+            raise RoomError(f"{key} is not a cut or set in room.json")
+        if key == src["cut"] or key in have:
+            continue
+        conf = room.state["records"].get(f"{keys[key]}/{key}", {}).get("confirmed", {})
+        data = {"cut": key, "text": words, "status": "open", "reply": "", "by": "claude",
+                "from": {"cut": src["cut"], "id": note_id}, "t": None, "tEnd": None, "region": None, "item": None,
+                "line": None, "quote": None, "qStart": None, "qEnd": None, "take": None,
+                "version": conf.get("version", 1), "createdAt": src.get("createdAt")}
+        doc = f"{note_id}--{key}"
+        path = outdir / f"notes__{doc}.json"
+        path.write_text(json.dumps(data, ensure_ascii=False) + "\n")
+        writes.append({"op": "set", "collection": "notes", "doc_id": doc, "file_path": str(path)})
     return writes

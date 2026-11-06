@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from cut_review import cli
-from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, take_of, todo, where
+from cut_review.notes import carry_writes, extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, saved_notes, spoken, take_of, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
@@ -698,7 +698,7 @@ def test_page_layout_puts_the_note_form_under_the_script_line(room_dir, capsys):
     assert html.count('id="composer"') == 1 and 'id="dock"' in html and 'id="scriptBox"' in html
     assert '$("scriptBox").append(c)' in html and '$("dock").append(c)' in html
     assert "placeComposer();" in html.split("function renderLineTarget()")[1].split("}")[0]   # follows the line
-    assert 'ev.key === "Escape" && S.line' in html                                            # Esc leaves the line
+    assert 'ev.key === "Escape" && (S.line || S.region)' in html                                            # Esc leaves the line
     assert "if (q) { pickLine(i, q); return; }" in html                  # selecting words opens the note on them
     assert "S.line ||" in html.split("function followScript(t)")[1].split("function ")[0]   # no follow-scroll while writing
 
@@ -1029,16 +1029,39 @@ def test_todo_shows_a_take_only_note(room_dir, tmp_path):
 
 # ---------------------------------------------------------------- version history on the page
 
-def test_page_needs_changes_on_an_older_version_is_not_pressed(room_dir, capsys):
+def test_page_approve_is_the_only_verdict_and_waits_for_resolved_notes(room_dir, capsys):
+    # unresolved notes (open or fixed) say a cut needs changes; Approve is held back until they are resolved
     html = page_html(room_dir)
-    rule = html[html.index("const verdictOf = "):]
-    rule = rule[:rule.index("\n")]
-    assert 'v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v' in rule
-    assert "approved" not in rule                                               # an approval stays as it was
-    assert "const v = verdictOf(key)?.state;" in html.split("function renderSide()")[1].split("function ")[0]   # the cut list dot
+    assert 'data-v="changes"' not in html and "verdictOf" not in html
+    assert 'const unresolved = (n) => n.status === "open" || n.status === "fixed";' in html
+    assert 'const approvedOn = (key) => S.verdicts[key]?.state === "approved" && !unresolvedOn(key);' in html
+    side = html.split("function renderSide()")[1].split("function ")[0]
+    assert '(approvedOn(key) ? " approved" : unresolvedOn(key) ? " changes" : "")' in side
     verdict = html.split("function renderVerdict()")[1].split("\n  }\n")[0]
-    assert 'const v = verdictOf(S.sel)?.state || "none"' in verdict
-    assert '"Needs changes on v" + raw.version' in verdict and 'id="staleV"' in html
+    assert "b.disabled = !S.db || !S.canWrite || !!left;" in verdict and "to approve." in verdict
+    assert "renderNotes(); renderVerdict();" in html                             # a note resolved re-enables it
+
+
+def test_page_notes_resolve_edit_and_sort_unresolved_first(room_dir, capsys):
+    html = page_html(room_dir)
+    card = html.split("function noteCard(")[1].split("\n  function ")[0]
+    assert 'if (n.status === "open") acts.append(act("Resolve", () => setStatus(n, "resolved")));' in card
+    assert 'if (mine && unresolved(n)) acts.append(act("Edit"' in card               # own notes only
+    edit = html.split("function editBox(n)")[1].split("\n  function ")[0]
+    assert 'if (n.status === "fixed") Object.assign(data, { status: "open"' in edit  # an edit reopens a fix
+    assert 'data-f="done"' in html and ">Unresolved<" in html
+    notes = html.split("function renderNotes()")[1].split("\n  function ")[0]
+    assert "list.slice().sort((a, b) => unresolved(b) - unresolved(a))" in notes
+    assert "S.editing" in notes.split("const ctx")[1].split("\n")[0]              # the card rebuilds into the editor
+    assert 'n.by === "claude" ? "Claude"' in card and '"from " + (src.short' in card
+
+
+def test_page_note_form_floats_on_a_new_box(room_dir, capsys):
+    html = page_html(room_dir)
+    place = html.split("function placeComposer()")[1].split("\n  }\n")[0]
+    assert "S.region && !S.drawing && draftBox?.isConnected" in place and 'c.classList.add("pop", "onbox")' in place
+    assert ".composer.pop.onbox { position: fixed;" in html
+    assert "placeComposer();" in html.split("function renderDraft()")[1].split("\n  }\n")[0]
 
 
 def test_page_version_dropdown_replaces_the_log_and_lists_history(room_dir, capsys):
@@ -1060,7 +1083,7 @@ def test_page_past_version_shows_its_video_script_items_and_notes(room_dir, caps
         assert k in past
     notes = html.split("const notesForSel = ")[1].split(";\n")[0]
     assert "(!S.viewV || (n.version || 1) === S.viewV)" in notes
-    assert 'if (S.filter === "active" && !S.viewV)' in html                      # every status on a past version
+    assert "let list = S.viewV ? all :" in html                      # every status on a past version
     assert "selNotes = null; if (past) vid.pause(); }" in html                   # the cache follows the version
     assert "S.viewV = v !== undefined ? v : changed ? null : S.viewV;" in html   # another cut: back to current
 
@@ -1073,7 +1096,7 @@ def test_page_past_version_is_read_only(room_dir, capsys):
     assert "if (S.viewV && /^[nior]$/.test(ev.key)) return;" in html
     assert "if (S.viewV) return;" in html.split("function pickLine(i, q)")[1].split("\n")[1]
     assert "const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false;" in html
-    assert "if (S.canWrite && S.db && !S.viewV)" in html                          # no Looks right / Reopen on the past
+    assert "if (S.canWrite && S.db && !S.viewV && S.editing !== n.id)" in html                          # no Looks right / Reopen on the past
 
 
 # ---------------------------------------------------------------- compare two versions side by side
@@ -1147,3 +1170,23 @@ def test_page_cut_list_count_says_what_it_counts(room_dir, capsys):
     assert 'setAttr(x.count, "title", o ? o + (o === 1 ? " open note" : " open notes") : total.get(key) ? "Every note closed" : "");' in side
     assert ".count.open::before {" in html and "mask: var(--bubble)" in html     # a note bubble before the number
     assert '<span class="count open">2</span>open notes' in html and '<span class="count">✓</span>every note closed' in html
+
+
+def test_carry_copies_a_note_onto_other_cuts_once(room_dir, tmp_path, capsys):
+    # "this applies to the other cuts too": Claude's open copy on each, linked back, never twice
+    room = Room.load(room_dir)
+    save_notes(room, load_export(export(tmp_path, {
+        "n1": {"id": "n1", "version": 2, "data": {"cut": "poll", "t": 2, "text": "Logo too big, here and everywhere", "status": "open", "createdAt": "c"}},
+    })))
+    w = carry_writes(room, "n1", ["carousel", "poll", "carousel"])
+    assert [x["doc_id"] for x in w] == ["n1--carousel"] and w[0]["op"] == "set"
+    data = json.loads(Path(w[0]["file_path"]).read_text())
+    assert data["cut"] == "carousel" and data["by"] == "claude" and data["status"] == "open"
+    assert data["from"] == {"cut": "poll", "id": "n1"} and data["text"] == "Logo too big, here and everywhere" and data["t"] is None
+    # once the copy is in the export, carrying again writes nothing
+    save_notes(room, saved_notes(room) + [{"id": "n1--carousel", "dbVersion": 1, **data}])
+    assert carry_writes(room, "n1", ["carousel"]) == []
+    assert "carried from poll note n1" in todo(room, saved_notes(room))
+    with pytest.raises(RoomError, match="not a cut or set"):
+        carry_writes(room, "n1", ["nope"])
+    assert run(room_dir, "carry", "n1", "--to", "carousel") == 0 and "Nothing to write" in capsys.readouterr().out
