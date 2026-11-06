@@ -244,6 +244,12 @@ with sync_playwright() as p:
           and J("document.getElementById('lineTargetQ').textContent") == "0:01.5")
     pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
     check("Esc closes it", J("document.getElementById('composer').parentNode.id") == "dock")
+    # a left-click elsewhere closes it too
+    pg.mouse.click(vb["x"] + vb["width"] * .5, vb["y"] + vb["height"] * .3, button="right"); pg.wait_for_timeout(300)
+    pg.locator("#track").scroll_into_view_if_needed(); tb = pg.locator("#track").bounding_box()
+    pg.mouse.click(tb["x"] + tb["width"] * .2, tb["y"] + tb["height"] / 2); pg.wait_for_timeout(300)
+    check("a left-click elsewhere closes the right-click form", J("document.getElementById('composer').parentNode.id") == "dock"
+          and J("document.getElementById('lineTarget').hidden"))
     # Esc on a floating box form drops the box
     pg.locator("#vid").scroll_into_view_if_needed(); vb = pg.locator("#vid").bounding_box()
     pg.mouse.move(vb["x"] + vb["width"] * .5, vb["y"] + vb["height"] * .5); pg.mouse.down()

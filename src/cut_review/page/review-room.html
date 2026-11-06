@@ -963,6 +963,10 @@ button { cursor: pointer; }
   const timeAtX = (el, x) => { const b = el.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - b.left) / b.width)) * dur(); };
   for (const id of ["track", "lane"]) $(id).addEventListener("contextmenu", (ev) => pinAt(ev, $(id).parentNode, timeAtX($(id), ev.clientX)));
   vid.addEventListener("contextmenu", (ev) => pinAt(ev, $("stage"), null));
+  // a left-click anywhere else closes the right-click form, like Esc (a typed draft stays, docked)
+  addEventListener("pointerdown", (ev) => {
+    if (S.pin && ev.button === 0 && !$("composer").contains(ev.target)) $("b-unline").click();
+  }, true);
   // what the floating form is on: a script line (and the words picked on it), a box, or where it was right-clicked
   function renderLineTarget() {
     const l = S.line;
