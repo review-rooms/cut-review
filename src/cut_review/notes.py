@@ -8,6 +8,7 @@ import json
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from .room import Room, RoomError, kind_of, load_json, set_items
@@ -110,7 +111,7 @@ def where(note: dict) -> str:
     return at
 
 
-def _normalize(obj: dict, fallback_id: str) -> dict | None:
+def _normalize(obj: dict, fallback_id: str, needs: tuple[str, ...] = ("text", "cut")) -> dict | None:
     """One exported document → a flat note with `id` and `dbVersion`.
 
     Accepts the raw document body, or a wrapper like `{"id": …, "data": {…}, "version": n}` (list/query output).
@@ -122,7 +123,7 @@ def _normalize(obj: dict, fallback_id: str) -> dict | None:
     else:
         body, nid = obj, str(obj.get("id") or fallback_id)
         ver = obj.get("__version__") or obj.get("_version")
-    if "text" not in body or "cut" not in body:
+    if any(k not in body for k in needs) or ("note" in body and "note" not in needs):   # a reply is not a note
         return None
     note = {k: v for k, v in body.items() if not k.startswith("__")}
     note["id"] = nid
@@ -130,8 +131,9 @@ def _normalize(obj: dict, fallback_id: str) -> dict | None:
     return note
 
 
-def load_export(path: str | Path) -> list[dict]:
-    """Every note in an export: a folder of JSON files (out_dir), one JSON file, or a JSON list."""
+def load_export(path: str | Path, needs: tuple[str, ...] = ("text", "cut")) -> list[dict]:
+    """Every note in an export: a folder of JSON files (out_dir), one JSON file, or a JSON list. With
+    needs=("text", "note"), every reply in an export of `replies` instead."""
     p = Path(path)
     files = sorted(p.rglob("*.json")) if p.is_dir() else [p]
     notes = []
@@ -142,10 +144,42 @@ def load_export(path: str | Path) -> list[dict]:
             continue
         items = data if isinstance(data, list) else (data.get("documents") or data.get("docs") or [data]) if isinstance(data, dict) else []
         for i, obj in enumerate(items):
-            n = _normalize(obj, f.stem if len(items) == 1 else f"{f.stem}-{i}")
+            n = _normalize(obj, f.stem if len(items) == 1 else f"{f.stem}-{i}", needs)
             if n:
                 notes.append(n)
     return notes
+
+
+def attach_replies(notes: list[dict], replies: list[dict]) -> None:
+    """Put each note's thread on it, oldest first: [{by, text, at}] (by is "claude" or the writer's user id)."""
+    by_note: dict[str, list[dict]] = {}
+    for r in sorted(replies, key=lambda r: str(r.get("at", ""))):
+        by_note.setdefault(str(r["note"]), []).append({"by": r.get("by"), "text": r["text"], "at": r.get("at")})
+    for n in notes:
+        n["thread"] = by_note.get(n["id"], [])
+
+
+def waiting(n: dict) -> bool:
+    """The owner wrote last in the note's thread: Claude owes an answer, whatever the note's status."""
+    t = n.get("thread") or []
+    return bool(t) and t[-1].get("by") != "claude"
+
+
+def reply_writes(room: Room, replies: dict[str, str]) -> list[dict]:
+    """Set writes that add Claude's answer to each note's thread (a new `replies` document each)."""
+    notes = {n["id"]: n for n in saved_notes(room)}
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    writes = []
+    for i, (nid, text) in enumerate(replies.items()):
+        n = notes.get(nid)
+        if not n:
+            raise RoomError(f"note {nid} is not in the last export (run `cut-review notes DIR` again)")
+        doc = f"{nid}--claude-{time.time_ns()}-{i}"
+        path = room.state_dir / "out" / f"replies__{doc}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"note": nid, "cut": n["cut"], "by": "claude", "text": text, "at": at}, ensure_ascii=False) + "\n")
+        writes.append({"op": "set", "collection": "replies", "doc_id": doc, "file_path": str(path)})
+    return writes
 
 
 def save_notes(room: Room, notes: list[dict]) -> None:
@@ -191,7 +225,10 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
     lines = [f"# Notes: {counts['open']} open, {counts['fixed']} fixed (waiting for the owner), "
              f"{counts['resolved']} resolved, {counts['wontfix']} won't fix", ""]
     order = {k: i for i, k in enumerate(keys)}
-    shown = [n for n in notes if show_all or n.get("status") == "open"]
+    shown = [n for n in notes if show_all or n.get("status") == "open" or waiting(n)]
+    if any(waiting(n) for n in notes):
+        lines.insert(1, f"{sum(waiting(n) for n in notes)} note(s) have a reply from the owner to answer (marked ↩): "
+                        "answer with `cut-review reply`, and change the video too if the reply asks for it.")
     for key in sorted({n["cut"] for n in shown}, key=lambda k: (order.get(k, 1e9), k)):
         mine = sorted((n for n in shown if n["cut"] == key), key=lambda n: (n.get("t") is None, n.get("t") or 0))
         ver = confirmed(room, key).get("version")
@@ -200,7 +237,11 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
             text = n["text"] or ("(no words: listen to the take)" if n.get("take") else "")
             src = n.get("from") if isinstance(n.get("from"), dict) else None
             carried = f", carried from {src.get('cut')} note {src.get('id')}" if src else ""
-            lines.append(f"- [{n.get('status')}] {where(n)} · {text}  (id {n['id']}, written on v{n.get('version', 1)}{carried})")
+            lines.append(f"- [{n.get('status')}]{' ↩' if waiting(n) else ''} {where(n)} · {text}  (id {n['id']}, written on v{n.get('version', 1)}{carried})")
+            if n.get("reply"):
+                lines.append(f"  Claude: {n['reply']}")
+            for r in n.get("thread") or []:
+                lines.append(f"  {'Claude' if r.get('by') == 'claude' else 'Owner'}: {r['text']}")
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
                 lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")

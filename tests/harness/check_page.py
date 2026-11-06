@@ -111,12 +111,17 @@ with sync_playwright() as p:
     lb = pg.locator("#lane").bounding_box()
     check(f"the notes lane sits right above the timeline, as wide ({lb})", abs(lb["y"] + lb["height"] - bb["y"]) < 1.5
           and abs(lb["x"] - bb["x"]) < 1 and abs(lb["width"] - bb["width"]) < 1 and J("document.getElementById('lane').getAttribute('aria-label')"))
-    check("the lane shows it's there: a tinted band with a note icon", J("getComputedStyle(document.getElementById('lane')).backgroundColor") not in ("rgba(0, 0, 0, 0)", "transparent")
+    check("the lane shows it's there: a tinted band with a note icon", (J("getComputedStyle(document.getElementById('lane')).backgroundColor") not in ("rgba(0, 0, 0, 0)", "transparent") or J("getComputedStyle(document.getElementById('lane')).backgroundImage") != "none")
           and J("getComputedStyle(document.getElementById('lane'), '::before').content") not in ("none", "normal"))
     if W <= 760:
         check("phone: the lane and timeline span the transport, first", J("document.querySelector('.tl').getBoundingClientRect().width") >= J("document.querySelector('.controls').getBoundingClientRect().width") - 1
               and lb["y"] < pg.locator("#b-play").bounding_box()["y"])
     check("no horizontal scroll", J("document.documentElement.scrollWidth <= window.innerWidth"))
+    # any screen shape: the picture and the timeline under it fit on the screen together, and the timeline is long
+    # enough to scrub (its own row when the player is narrow)
+    fit = J("""(() => { const v = document.getElementById('vid').getBoundingClientRect(), t = document.getElementById('track').getBoundingClientRect();
+      return { span: Math.round(t.bottom - v.top), tw: Math.round(t.width), vh: Math.round(v.height) }; })()""")
+    check(f"player fits the screen ({fit['span']} of {H} px), timeline {fit['tw']} px", fit["span"] <= H and fit["vh"] >= 150 and fit["tw"] >= min(300, W - 40))
     with pg.expect_download(timeout=15000) as dl:   # the stand-in saves the file for real, as claude.ai would
         pg.locator("#b-dl").click()
     check(f"Download saves the video ({dl.value.suggested_filename})", dl.value.suggested_filename.endswith(".mp4") and len(J("window.__downloads")) == 1)
@@ -217,6 +222,28 @@ with sync_playwright() as p:
         check("a box scrolled away docks the form", J("document.getElementById('composer').parentNode.id") == "dock")
         J("scrollTo(0, 0)"); pg.wait_for_timeout(200)
         pg.locator("#noteText").focus(); pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
+    # right-click on the timeline: the form opens there, at that time
+    J("document.activeElement.blur()")
+    pg.locator("#track").scroll_into_view_if_needed(); tb = pg.locator("#track").bounding_box()
+    pg.mouse.click(tb["x"] + tb["width"] * .5, tb["y"] + tb["height"] / 2, button="right"); pg.wait_for_timeout(300)
+    cb = pg.locator("#composer").bounding_box()
+    check("right-click on the timeline opens the form there, at that time", J("document.getElementById('composer').classList.contains('pop')")
+          and J("document.activeElement.id") == "noteText" and J("document.getElementById('lineTargetN').textContent") == "At ·"
+          and J("document.getElementById('lineTargetQ').textContent").startswith("0:04") and (abs(cb["y"] - (tb["y"] + tb["height"] + 8)) < 3 or cb["y"] + cb["height"] <= tb["y"] + tb["height"] - 7)
+          and abs(J("document.getElementById('vid').currentTime") - 4) < .2)
+    pg.keyboard.type("Beat drops here"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
+    n = [x for x in store("notes") if x["text"] == "Beat drops here"]
+    check("the note is at the right-clicked time", len(n) == 1 and 3.8 < n[0]["t"] < 4.2 and n[0]["tEnd"] is None
+          and J("document.getElementById('composer').parentNode.id") == "dock")
+    J("(() => { const s = window.__store.notes; for (const id in s) if (s[id].text === 'Beat drops here') window.__db.doc('notes/' + id).delete(); })()"); pg.wait_for_timeout(300)   # the steps below count the notes
+    # right-click on the picture: the form at the cursor, on this frame; Esc closes it
+    J("document.getElementById('vid').currentTime = 1.5"); pg.wait_for_timeout(200)
+    pg.locator("#vid").scroll_into_view_if_needed(); vb = pg.locator("#vid").bounding_box()
+    pg.mouse.click(vb["x"] + vb["width"] * .5, vb["y"] + vb["height"] * .3, button="right"); pg.wait_for_timeout(300)
+    check("right-click on the picture opens the form on this frame", J("document.getElementById('composer').classList.contains('onbox')")
+          and J("document.getElementById('lineTargetQ').textContent") == "0:01.5")
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
+    check("Esc closes it", J("document.getElementById('composer').parentNode.id") == "dock")
     # Esc on a floating box form drops the box
     pg.locator("#vid").scroll_into_view_if_needed(); vb = pg.locator("#vid").bounding_box()
     pg.mouse.move(vb["x"] + vb["width"] * .5, vb["y"] + vb["height"] * .5); pg.mouse.down()
@@ -258,6 +285,16 @@ with sync_playwright() as p:
     check("a live change keeps the cursor where it is, and other cards as they were", J("document.activeElement.id") == "noteText"
           and pg.locator("#notes .editbox").count() == 1 and J("window.__other.isConnected"))
     pg.locator("#notes .editbox").get_by_role("button", name="Cancel").click(); pg.wait_for_timeout(200)
+    # replying: a thread under the note, the owner's and Claude's replies in order
+    card = pg.locator("#notes .note").filter(has_text="Too long, trim two seconds")
+    card.get_by_role("button", name="Reply").click(); pg.wait_for_timeout(200)
+    check("Reply opens a box with the cursor in it", J("document.activeElement.closest('.editbox') !== null") and J("document.activeElement.getAttribute('aria-label')") == "Reply to the note")
+    pg.keyboard.type("Why two and not one?"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
+    reps = J("Object.values(window.__store.replies || {})")
+    check("the reply is its own document on the note", len(reps) == 1 and reps[0]["note"] == nid and reps[0]["text"] == "Why two and not one?" and reps[0]["cut"] == "teaser")
+    J(f"window.__db.collection('replies').add({{note: '{nid}', cut: 'teaser', by: 'claude', text: 'One second cut the beat.', at: '9999'}})"); pg.wait_for_timeout(400)
+    thread = J(f"[...document.querySelector('#notes .note[data-id=\"{nid}\"]').querySelectorAll('.reply')].map((r) => r.textContent)")
+    check(f"the thread reads in order ({thread})", thread[-2:] == ["You: Why two and not one?", "Claude: One second cut the beat."] and pg.locator("#notes .editbox").count() == 0)
     # resolving: unresolved first in time order, the filter splits them
     first = pg.locator("#notes .note").first
     first.get_by_role("button", name="Resolve").click(); pg.wait_for_timeout(400)

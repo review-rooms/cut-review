@@ -32,7 +32,7 @@ PAGE = HERE.parent.parent / "src" / "cut_review" / "page" / "review-room.html"
 MOCK = r"""<script>
 (() => {
   const store = __SEED__;
-  for (const c of ["room", "cuts", "sets", "notes", "verdicts"]) store[c] = store[c] || {};
+  for (const c of ["room", "cuts", "sets", "notes", "replies", "verdicts"]) store[c] = store[c] || {};
   const subs = [];
   const fire = () => setTimeout(() => subs.forEach((f) => f()), 15);
   const snapDoc = (c, id) => ({ id, exists: !!store[c][id], data: () => store[c][id], metadata: { fromCache: false, hasPendingWrites: false } });

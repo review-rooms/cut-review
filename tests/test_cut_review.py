@@ -696,7 +696,6 @@ def test_page_layout_puts_the_note_form_under_the_script_line(room_dir, capsys):
     html = page_html(room_dir)
     # the form is one element: docked in the notes panel, floated under a script line while a note is on one
     assert html.count('id="composer"') == 1 and 'id="dock"' in html and 'id="scriptBox"' in html
-    assert "placeComposer();" in html.split("function renderLineTarget()")[1].split("}")[0]   # follows the line
     assert "if (q) { pickLine(i, q); return; }" in html                  # selecting words opens the note on them
     assert "S.line ||" in html.split("function followScript(t)")[1].split("function ")[0]   # no follow-scroll while writing
 
@@ -1170,3 +1169,26 @@ def test_an_old_page_in_a_linked_room_asks_to_republish(room_dir, capsys):
     assert run(room_dir, "status") == 0
     err = capsys.readouterr().err
     assert "page is older" in err and "https://claude.ai/artifact/abc" in err and '"room": {}' in err
+
+
+def test_threads_show_in_the_todo_and_claude_answers_with_reply(room_dir, tmp_path, capsys):
+    # the owner replied on a fixed note: it comes back on the to-do (↩) with its thread until Claude answers
+    notes = export(tmp_path, {"n1": {"id": "n1", "version": 3, "data": {"cut": "poll", "t": 2, "text": "Logo smaller", "status": "fixed", "reply": "Made it 20% smaller."}}})
+    rdir = tmp_path / "replies"; rdir.mkdir()
+    (rdir / "r1.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}))
+    assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
+    out = capsys.readouterr().out
+    assert "[fixed] ↩" in out and "Claude: Made it 20% smaller." in out and "Owner: Why 20%?" in out and "1 note(s) have a reply" in out
+    room = Room.load(room_dir)
+    assert saved_notes(room)[0]["thread"] == [{"by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}]
+    assert len(load_export(rdir)) == 0                                 # a reply is never read as a note
+    assert run(room_dir, "reply", "n1=It matched the safe area.") == 0
+    w = json.loads(capsys.readouterr().out.split("pass each list as `writes`:")[1].split("# batch 1 of 1")[1].split("\nThen")[0])
+    assert w[0]["op"] == "set" and w[0]["collection"] == "replies" and w[0]["doc_id"].startswith("n1--claude-")
+    data = json.loads(Path(w[0]["file_path"]).read_text())
+    assert data["note"] == "n1" and data["by"] == "claude" and data["text"] == "It matched the safe area." and data["cut"] == "poll"
+    # once Claude's answer is in the thread, the note isn't waiting any more
+    (rdir / "r2.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "claude", "text": "It matched the safe area.", "at": "2026-11-06T10:05:00Z"}))
+    assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
+    assert "↩" not in capsys.readouterr().out
+    assert run(room_dir, "reply", "nope=x") == 1

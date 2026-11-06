@@ -16,7 +16,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
-from .notes import carry_writes, extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
+from .notes import attach_replies, carry_writes, extract_frames, fix_writes, load_export, reply_writes, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, sha256
@@ -234,7 +234,7 @@ def cmd_written(a) -> int:
 
 def cmd_notes(a) -> int:
     room = Room.load(a.room)
-    for p in (a.export, a.result):   # check both before anything is read or saved
+    for p in (a.export, a.result, a.replies):   # check them all before anything is read or saved
         if p and p != "-" and not Path(p).exists():
             raise RoomError(f"no such file or folder: {p}")
     notes = load_export(a.export)
@@ -245,6 +245,7 @@ def cmd_notes(a) -> int:
         for n in notes:
             if n["id"] in versions:
                 n["dbVersion"] = versions[n["id"]]
+    attach_replies(notes, load_export(a.replies, ("text", "note")) if a.replies else [])
     save_notes(room, notes)
     print(todo(room, notes, show_all=a.all), end="")
     missing = [n["id"] for n in notes if not n.get("dbVersion")]
@@ -322,6 +323,17 @@ def cmd_fix(a) -> int:
     return 0
 
 
+def cmd_reply(a) -> int:
+    replies = {}
+    for pair in a.pairs:
+        nid, sep, text = pair.partition("=")
+        if not sep or not text.strip():
+            raise RoomError(f"expected ID=TEXT, got {pair!r}")
+        replies[nid] = text.strip()
+    _print_batches(reply_writes(Room.load(a.room), replies), "replies")
+    return 0
+
+
 def cmd_carry(a) -> int:
     _print_batches(carry_writes(Room.load(a.room), a.id, a.to, a.text), "notes")
     return 0
@@ -395,6 +407,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("export", help="the out_dir of an ArtifactData list/query of `notes`, or a JSON file")
     s.add_argument("--result", help="the saved ArtifactData list/query result text (FILE or -): gives each note's database version")
     s.add_argument("--all", action="store_true", help="also list fixed, resolved and won't-fix notes")
+    s.add_argument("--replies", help="the out_dir of an ArtifactData list of `replies`: each note's thread")
     s.set_defaults(fn=cmd_notes)
 
     s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (on cuts and set clips), and set stills with a region (ffmpeg)")
@@ -410,6 +423,10 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--from", dest="source", help="JSON file: {id: reply} or [{id, reply}]")
     s.add_argument("--status", default="fixed", choices=["fixed", "wontfix"])
     s.set_defaults(fn=cmd_fix)
+
+    s = sub.add_parser("reply", help="print the writes that answer the owner in notes' threads")
+    s.add_argument("pairs", nargs="+", metavar="ID=TEXT")
+    s.set_defaults(fn=cmd_reply)
 
     s = sub.add_parser("carry", help="copy a note onto other cuts it says it applies to, linked back to it")
     s.add_argument("id", help="the owner's note id")

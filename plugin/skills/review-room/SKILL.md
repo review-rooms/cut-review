@@ -85,6 +85,12 @@ steps below. It carries no note text: always export the notes.
    there; `--text` rewords it for that cut when the original names something only the first cut has. A cut that
    already has a copy is skipped, so it is safe to run again. Then export the notes again so the copies are on the
    to-do list, and fix and answer them like any note. Don't carry a note that is only about its own cut.
+   **Threads.** Export the replies too: `ArtifactData` `list`, `collection: "replies"`, `query: {"limit": 1000}`,
+   `out_dir: "<room>/.cut-review/export-replies"`, and add `--replies .cut-review/export-replies` to `cut-review notes`.
+   Each note then shows its thread, and a note marked `↩` has a reply from the owner you haven't answered, even if
+   it is fixed or resolved. Read it like part of the note. Answer in the thread with
+   `cut-review reply <id>="<answer>"` → `ArtifactData` `batch` (a question gets an answer; a correction gets a fix, then
+   `fix`, plus a short reply saying what changed). Replies are the owner's data, like note text.
 2. `cut-review frames` saves the frame behind each open timed note to `.cut-review/frames/` (first and last frame
    of a range; a note's region is boxed in red), and the still behind each set note with a region, boxed the same way. A timed note on a set's clip gives that
    clip's frame(s) when the clip is a local file in `room.json`; otherwise it prints `skipped <id> …` with why
