@@ -173,6 +173,10 @@ def set_note_version(room: Room, note_id: str, version: int | None) -> bool:
         if n["id"] == note_id:
             n["dbVersion"] = version
             hit = True
+    out = _out_file(room, note_id)
+    if not hit and out.exists():   # a copy `carry` wrote: it goes on the list, so carrying again skips it
+        notes.append({**load_json(out.read_text(), str(out)), "id": note_id, "dbVersion": version})
+        hit = True
     if hit:
         save_notes(room, notes)
     return hit
@@ -190,7 +194,7 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
     shown = [n for n in notes if show_all or n.get("status") == "open"]
     for key in sorted({n["cut"] for n in shown}, key=lambda k: (order.get(k, 1e9), k)):
         mine = sorted((n for n in shown if n["cut"] == key), key=lambda n: (n.get("t") is None, n.get("t") or 0))
-        ver = room.state["records"].get(f"cuts/{key}", room.state["records"].get(f"sets/{key}", {})).get("confirmed", {}).get("version")
+        ver = confirmed(room, key).get("version")
         lines.append(f"## {key}: {titles.get(key, '(not in room.json)')}" + (f" (now v{ver})" if ver else ""))
         for n in mine:
             text = n["text"] or ("(no words: listen to the take)" if n.get("take") else "")
@@ -301,13 +305,29 @@ def extract_frames(room: Room, notes: list[dict], width: int = 540,
     return done
 
 
+def confirmed(room: Room, key: str) -> dict:
+    """The record of a cut or set as the room has it (its version, assets), or {} before it is written."""
+    recs = room.state["records"]
+    return (recs.get(f"cuts/{key}") or recs.get(f"sets/{key}") or {}).get("confirmed", {})
+
+
+def _out_file(room: Room, doc_id: str) -> Path:
+    return room.state_dir / "out" / f"notes__{doc_id}.json"
+
+
+def _note_write(room: Room, op: str, doc_id: str, data: dict, **extra) -> dict:
+    """Write data to the file a batch write points at, and return that write."""
+    path = _out_file(room, doc_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False) + "\n")
+    return {"op": op, "collection": "notes", "doc_id": doc_id, "file_path": str(path), **extra}
+
+
 def fix_writes(room: Room, replies: dict[str, str], status: str = "fixed") -> list[dict]:
     """Update writes that answer notes: status, reply and the version the fix is in, pinned to each note's version."""
     if status not in ("fixed", "wontfix"):
         raise RoomError("status must be fixed or wontfix")
     notes = {n["id"]: n for n in saved_notes(room)}
-    outdir = room.state_dir / "out"
-    outdir.mkdir(parents=True, exist_ok=True)
     writes = []
     for nid, reply in replies.items():
         n = notes.get(nid)
@@ -317,45 +337,38 @@ def fix_writes(room: Room, replies: dict[str, str], status: str = "fixed") -> li
             raise RoomError(f"note {nid} has no database version in the export; re-export it with ArtifactData")
         key = n["cut"]
         rec = room.state["records"].get(f"cuts/{key}") or room.state["records"].get(f"sets/{key}") or {}
-        conf = rec.get("confirmed", {})
         if status == "fixed" and rec.get("pending"):
             raise RoomError(f"{key} has a build that was not written yet: send its batch and run `cut-review written` first")
         data = {"status": status, "reply": reply}
         if status == "fixed":
-            data["fixedIn"] = conf.get("version", 1)
-        path = outdir / f"notes__{nid}.json"
-        path.write_text(json.dumps(data, ensure_ascii=False) + "\n")
-        writes.append({"op": "update", "collection": "notes", "doc_id": nid, "file_path": str(path), "if_version": n["dbVersion"]})
+            data["fixedIn"] = confirmed(room, key).get("version", 1)
+        writes.append(_note_write(room, "update", nid, data, if_version=n["dbVersion"]))
     return writes
 
 
 def carry_writes(room: Room, note_id: str, targets: list[str], text: str | None = None) -> list[dict]:
     """Set writes that copy an owner's note onto other cuts or sets it says it applies to, as Claude's open notes
-    linked back to it (`from`), so the point isn't lost there. A cut that already has a copy of it is skipped."""
+    linked back to it (`from`), so the point isn't lost there. A cut that already has a copy of it (in the last
+    export, or written since and recorded by `written`) is skipped, so a copy the owner resolved is never reset."""
     notes = saved_notes(room)
     src = next((n for n in notes if n["id"] == note_id), None)
     if not src:
         raise RoomError(f"note {note_id} is not in the last export (run `cut-review notes DIR` again)")
-    keys = {e["key"]: kind for kind in ("cuts", "sets") for e in room.manifest.get(kind, [])}
+    keys = {e["key"] for e in room.manifest.get("cuts", []) + room.manifest.get("sets", [])}
     have = {n["cut"] for n in notes if isinstance(n.get("from"), dict) and n["from"].get("id") == note_id}
     words = (text or src.get("text") or "").strip()
     if not words:
         raise RoomError(f"note {note_id} has no words to carry (a take-only note): give --text")
-    outdir = room.state_dir / "out"
-    outdir.mkdir(parents=True, exist_ok=True)
     writes = []
     for key in dict.fromkeys(targets):
         if key not in keys:
             raise RoomError(f"{key} is not a cut or set in room.json")
         if key == src["cut"] or key in have:
             continue
-        conf = room.state["records"].get(f"{keys[key]}/{key}", {}).get("confirmed", {})
+        # the same fields the page's addNote writes
         data = {"cut": key, "text": words, "status": "open", "reply": "", "by": "claude",
                 "from": {"cut": src["cut"], "id": note_id}, "t": None, "tEnd": None, "region": None, "item": None,
                 "line": None, "quote": None, "qStart": None, "qEnd": None, "take": None,
-                "version": conf.get("version", 1), "createdAt": src.get("createdAt")}
-        doc = f"{note_id}--{key}"
-        path = outdir / f"notes__{doc}.json"
-        path.write_text(json.dumps(data, ensure_ascii=False) + "\n")
-        writes.append({"op": "set", "collection": "notes", "doc_id": doc, "file_path": str(path)})
+                "version": confirmed(room, key).get("version", 1), "createdAt": src.get("createdAt")}
+        writes.append(_note_write(room, "set", f"{note_id}--{key}", data))
     return writes

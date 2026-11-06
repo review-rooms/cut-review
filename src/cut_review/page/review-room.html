@@ -73,6 +73,7 @@ button { cursor: pointer; }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .brand b { font-size: 14px; font-weight: 600; white-space: nowrap; }
 .brand span { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#b-apply { flex: none; }
 .tally { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 .side { border-right: 1px solid var(--line); padding: 14px 8px; padding-left: max(8px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
@@ -284,10 +285,10 @@ button { cursor: pointer; }
 
 .verdict { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
 .verdict button { flex: 1; font-size: 13px; padding: 9px 12px; border-radius: 8px; }
-.verdict [data-v="approved"] { border: 1px solid var(--solid); background: var(--solid); color: var(--solid-ink); }
-.verdict [data-v="approved"][aria-pressed="true"] { background: var(--good-soft); border-color: var(--good-dot); color: var(--good); font-weight: 500; }
+#approve { border: 1px solid var(--solid); background: var(--solid); color: var(--solid-ink); }
+#approve[aria-pressed="true"] { background: var(--good-soft); border-color: var(--good-dot); color: var(--good); font-weight: 500; }
 .verdict button:disabled { opacity: 0.5; cursor: default; }
-.verdict .stale { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--faint); }
+.verdict .hint { flex: 1 0 100%; }
 
 /* ---------- sets */
 .items { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; padding-bottom: 24px; }
@@ -320,6 +321,7 @@ button { cursor: pointer; }
   .app { display: block; }
   .bar { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .tally, .head .grow { display: none; }
+  #b-apply { margin-left: auto; }
   .side { position: sticky; top: 0; z-index: 8; height: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; background: var(--panel);
     padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); border-right: 0; border-bottom: 1px solid var(--line); }
   .legend, .group h2 { display: none; }
@@ -364,6 +366,7 @@ button { cursor: pointer; }
   <header class="bar">
     <div class="brand"><b id="roomTitle">Review room</b><span id="roomSub"></span></div>
     <span class="tally mono" id="tally"></span>
+    <button class="btn solid" id="b-apply" hidden title="Send Claude a request to apply every open note in this room">Ask Claude to apply</button>
   </header>
 
   <nav class="side" aria-label="Cuts">
@@ -464,9 +467,9 @@ button { cursor: pointer; }
         <button class="primary" id="b-add" disabled>Add ↵</button></div>
       <p class="kbd mono">k play · , . frame · n note · i o range · r or drag a box</p>
     </div></div>
-    <div class="verdict" id="verdict" role="group" aria-label="Verdict">
-      <p class="stale" id="staleV" hidden></p>
-      <button data-v="approved" aria-pressed="false">Approve</button>
+    <div class="verdict" id="verdict">
+      <p class="hint" id="approveHint" hidden></p>
+      <button id="approve" aria-pressed="false">Approve</button>
     </div>
   </aside>
 </div>
@@ -478,7 +481,7 @@ button { cursor: pointer; }
   const $ = (id) => ids[id] || (ids[id] = document.getElementById(id));   // every element with an id lives as long as the page
   const FPS = 30;
   const S = { db: null, me: null, canWrite: true, meta: {}, cuts: [], sets: [], notes: [], verdicts: {},
-              sel: null, viewV: null, cmp: null, cmpSound: "cur", filter: "active", editing: null, editText: null, stampT: 0, stampLocked: false, item: null,
+              sel: null, viewV: null, cmp: null, cmpSound: "cur", filter: "active", editing: null, editText: null, editFocus: false, stampT: 0, stampLocked: false, item: null,
               stampEnd: null, region: null, drawing: false, draft: null, focus: null,
               line: null, follow: true, nowRow: -1, scriptTouched: 0,
               assets: null, mic: false, take: null, takeBusy: false, saving: false, loaded: {} };
@@ -489,6 +492,7 @@ button { cursor: pointer; }
     const m = Math.floor(t / 60), s = t - m * 60;
     return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1);
   };
+  const timeSpan = (t, end) => fmt(t) + (end != null ? "–" + fmt(end) : "");
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   // writes that skip themselves when nothing changes, so a re-render of the same data touches no style or layout
   const setText = (e, s) => { if (e.textContent !== s) e.textContent = s; };
@@ -519,10 +523,12 @@ button { cursor: pointer; }
   };
   // the past versions a cut can be compared with: the kept ones, newest first (never a set's)
   const keptOf = (e) => e?.kind === "cut" ? (e.history || []).filter((h) => h.video).sort((a, b) => b.v - a.v) : [];
-  // the only verdict is an approval: a cut with unresolved notes needs changes by itself (an old "changes" counts as none)
+  // The only verdict is an approval: a cut with unresolved notes needs changes by itself (an old "changes" counts as
+  // none). A note written after the approval undoes it, even once that note is resolved: the new version wasn't approved.
   const unresolved = (n) => n.status === "open" || n.status === "fixed";
   const unresolvedOn = (key) => S.notes.filter((n) => n.cut === key && unresolved(n)).length;
-  const approvedOn = (key) => S.verdicts[key]?.state === "approved" && !unresolvedOn(key);
+  const approvedOn = (key) => { const v = S.verdicts[key];
+    return v?.state === "approved" && !S.notes.some((n) => n.cut === key && (unresolved(n) || String(n.createdAt) > String(v.at))); };
 
   // the cut list is built once per set of entries; a snapshot only updates its dots, counts and the tally
   let sideSig = "";
@@ -559,11 +565,11 @@ button { cursor: pointer; }
         box.append(wrap);
       }
     }
-    const open = new Map(), total = new Map();
-    for (const n of S.notes) { total.set(n.cut, (total.get(n.cut) || 0) + 1); if (n.status === "open") open.set(n.cut, (open.get(n.cut) || 0) + 1); }
+    const open = new Map(), total = new Map(), left = new Map(), inc = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+    for (const n of S.notes) { inc(total, n.cut); if (n.status === "open") inc(open, n.cut); if (unresolved(n)) inc(left, n.cut); }
     for (const [key, x] of sideBtns) {
       setAttr(x.b, "aria-current", String(S.sel === key));
-      setCls(x.dot, "dot" + (approvedOn(key) ? " approved" : unresolvedOn(key) ? " changes" : ""));
+      setCls(x.dot, "dot" + (left.get(key) ? " changes" : approvedOn(key) ? " approved" : ""));
       const o = open.get(key) || 0;
       setCls(x.count, "count" + (o ? " open" : ""));
       setText(x.count, o ? String(o) : total.get(key) ? "✓" : "");
@@ -596,7 +602,7 @@ button { cursor: pointer; }
     $("scriptCard").hidden = isSet || !(e.script || []).length;
     $("itemSel").hidden = !isSet;
     if (moved) {
-      S.stampEnd = null; S.region = null; S.focus = null; S.line = null; S.item = null;
+      S.stampEnd = null; S.region = null; S.focus = null; S.line = null; S.item = null; S.editing = S.editText = null;
       renderLineTarget(); hideSelBtn(); setDrawing(false); clearBadTimes();
     }
     notePlaceholder();
@@ -715,20 +721,44 @@ button { cursor: pointer; }
   // ---------- verdict
   // one button: Approve, held back while any note on the cut is unresolved (those notes say it needs changes)
   function renderVerdict() {
-    const ok = approvedOn(S.sel), left = unresolvedOn(S.sel), ver = "v" + (rawEntry(S.sel)?.version || 1), b = $("verdict").querySelector("button");
-    $("staleV").hidden = !left;
-    if (left) setText($("staleV"), "Resolve " + (left === 1 ? "the open note" : "the " + left + " open notes") + " to approve.");
+    const ok = approvedOn(S.sel), left = unresolvedOn(S.sel), ver = "v" + (rawEntry(S.sel)?.version || 1), b = $("approve");
+    $("approveHint").hidden = !left;
+    if (left) setText($("approveHint"), "Resolve " + (left === 1 ? "the unresolved note" : "the " + left + " unresolved notes") + " to approve.");
     setAttr(b, "aria-pressed", String(ok));
     b.disabled = !S.db || !S.canWrite || !!left;
     setText(b, (ok ? "Approved " : "Approve ") + ver);
     const tip = ok ? "Press again to mark it unreviewed" : "";
     if (b.title !== tip) b.title = tip;
   }
-  $("verdict").addEventListener("click", async (ev) => {
-    const b = ev.target.closest("button"); if (!b || !S.db || !S.sel) return;
-    const state = b.getAttribute("aria-pressed") === "true" ? "none" : b.dataset.v;
+  $("approve").addEventListener("click", async () => {
+    if (!S.db || !S.sel) return;
+    const state = approvedOn(S.sel) ? "none" : "approved";
     try { await S.db.doc("verdicts/" + S.sel).set({ state, version: rawEntry(S.sel)?.version || 1, at: new Date().toISOString() }); }
     catch (err) { onWriteError(err); }
+  });
+
+  // ---------- "Ask Claude to apply": hands the viewer's Claude (the chat beside the room, or their session that has
+  // it) a request to apply the open notes, on their click. The platform asks them to confirm before it sends.
+  const SENDS = ["available", "available_if_summoned", "available_if_opened"];
+  let canSend = "off";
+  async function renderApply() {
+    const open = S.notes.filter((n) => n.status === "open"), b = $("b-apply");
+    try { canSend = S.room && S.canWrite && open.length ? await S.room.canSendToClaudeSession() : "off"; } catch (err) { canSend = "off"; }
+    b.hidden = !SENDS.includes(canSend);
+    setText(b, "Ask Claude to apply " + (open.length === 1 ? "1 note" : open.length + " notes"));
+  }
+  addEventListener("focus", renderApply);   // a chat opened beside the room since: the answer can change
+  $("b-apply").addEventListener("click", () => {
+    const open = S.notes.filter((n) => n.status === "open");
+    if (!S.room || !open.length) return;
+    // called straight from the click (nothing awaited first): the platform proves the gesture from it
+    S.room.sendToClaudeSession({
+      label: "Apply my review notes", request: "apply_notes", room: String(S.meta.title || "").slice(0, 200),
+      openNotes: open.length, cuts: [...new Set(open.map((n) => n.cut))].slice(0, 64),
+    }, { deliver: "send", attachPresence: false })
+      .then(() => banner("Sent to Claude. It applies the notes in your conversation; this room updates as it goes."))
+      .catch((err) => banner(err?.code === "rate_limited" ? "Just sent one. Try again in a moment."
+        : "Couldn't reach Claude from here. Ask it in your Claude chat or session: \u201capply my notes\u201d.", true));
   });
 
   // ---------- script and change log
@@ -828,7 +858,7 @@ button { cursor: pointer; }
   }
   // which lines and words carry notes (open or fixed) and which words are picked, without rebuilding the rows
   function renderScriptMarks() {
-    const mine = notesForSel().filter((n) => n.line != null && (S.viewV || n.status === "open" || n.status === "fixed"));
+    const mine = notesForSel().filter((n) => n.line != null && (S.viewV || unresolved(n)));
     scriptRows.forEach((row, i) => {
       const here = mine.filter((n) => +n.line === i);
       row.tr.classList.toggle("noted", here.length > 0);
@@ -869,48 +899,53 @@ button { cursor: pointer; }
     $("noteText").focus({ preventScroll: true });
     $("composer").scrollIntoView({ block: "nearest", behavior: glide() });
   }
-  // the note form sits in the notes panel; on a script line it floats right under that line instead
+  // the note form sits in the notes panel; on a script line it floats right under that line instead, and on a box
+  // just drawn under the box (above it when there is no room below), over the page, while the box is in view
   function placeComposer() {
     const c = $("composer"), row = S.line && !$("scriptCard").hidden && scriptRows[S.line.i]?.tr;
     const typing = document.activeElement === $("noteText");
-    // a box set for the new note: the form floats under it (above it when there is no room below), over the page
-    const boxed = !row && S.region && !S.drawing && draftBox?.isConnected && draftBox.getBoundingClientRect();
+    const r = !row && S.region && !S.drawing && draftBox?.isConnected ? draftBox.getBoundingClientRect() : null;
+    const boxed = r && r.width && r.bottom > 0 && r.top < innerHeight;
+    if (row || boxed) {
+      const host = row ? $("scriptBox") : document.body;
+      if (c.parentNode !== host) host.append(c);
+      c.classList.add("pop"); c.classList.toggle("onbox", !row);
+    }
     if (row) {
-      if (c.parentNode !== $("scriptBox")) $("scriptBox").append(c);
-      c.classList.add("pop"); c.classList.remove("onbox"); c.style.left = "";
+      c.style.left = c.style.width = "";
       c.style.top = (row.offsetTop + row.offsetHeight + 4) + "px";
-    } else if (boxed && boxed.width) {
-      if (c.parentNode !== document.body) document.body.append(c);
-      c.classList.add("pop", "onbox");
-      const W = Math.min(340, innerWidth - 16), H = c.offsetHeight || 150;
-      const below = boxed.bottom + 8, above = boxed.top - 8 - H;
-      const top = below + H <= innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, innerHeight - H - 8);
+    } else if (boxed) {
+      const W = Math.min(340, innerWidth - 16);
       c.style.width = W + "px";
-      c.style.left = Math.round(Math.max(8, Math.min(boxed.left, innerWidth - W - 8))) + "px";
-      c.style.top = Math.round(top) + "px";
-      $("lineTarget").hidden = false; $("lineTargetN").textContent = "Box ·";
-      $("lineTargetQ").textContent = entryOf(S.sel)?.kind === "set" ? S.item || "" : $("general").checked ? "whole cut" : fmt(S.stampT) + (S.stampEnd != null ? "–" + fmt(S.stampEnd) : "");
+      const H = c.offsetHeight, below = r.bottom + 8, above = r.top - 8 - H;
+      c.style.left = Math.round(Math.max(8, Math.min(r.left, innerWidth - W - 8))) + "px";
+      c.style.top = Math.round(Math.max(8, below + H <= innerHeight - 8 ? below : above >= 8 ? above : innerHeight - H - 8)) + "px";
     } else if (c.parentNode !== $("dock")) {
       $("dock").append(c); c.classList.remove("pop", "onbox"); c.style.top = c.style.left = c.style.width = "";
     }
     if (typing && document.activeElement !== $("noteText")) $("noteText").focus({ preventScroll: true });
   }
-  if (window.ResizeObserver) new ResizeObserver(() => { if (S.line) placeComposer(); }).observe($("script"));
+  const repop = () => { if ($("composer").classList.contains("pop")) placeComposer(); };
+  if (window.ResizeObserver) new ResizeObserver(repop).observe($("script"));
+  for (const t of ["resize", "scroll"]) addEventListener(t, repop, { passive: true, capture: true });
+  // what the floating form is on: a script line (and the words picked on it) or a box
   function renderLineTarget() {
     const l = S.line;
-    $("lineTarget").hidden = !l;
     renderTake();
     placeComposer();
-    if (!l) return;
-    $("lineTargetN").textContent = "Line " + (l.i + 1) + " ·";
-    const plain = spokenOf(scriptOf(entryOf(S.sel))[l.i]?.text ?? "");
-    $("lineTargetQ").textContent = l.quote ? "“" + l.quote + "”" : plain;
+    $("lineTarget").hidden = !l && !S.region;
+    if (l) {
+      $("lineTargetN").textContent = "Line " + (l.i + 1) + " ·";
+      $("lineTargetQ").textContent = l.quote ? "“" + l.quote + "”" : spokenOf(scriptOf(entryOf(S.sel))[l.i]?.text ?? "");
+    } else if (S.region) {
+      $("lineTargetN").textContent = "Box ·";
+      $("lineTargetQ").textContent = entryOf(S.sel)?.kind === "set" ? S.item || "" : timed() ? timeSpan(S.stampT, S.stampEnd) : "whole cut";
+    }
   }
-  $("b-unline").onclick = () => {
+  $("b-unline").onclick = () => {   // Esc: off the line, or drop the box the form floats on
     if (S.line) { S.line = null; renderLineTarget(); renderScriptMarks(); return; }
-    S.region = null; updateStamp(); renderRegions();   // the box the form floats on
+    S.region = null; updateStamp(); renderRegions();
   };
-  for (const t of ["resize", "scroll"]) addEventListener(t, () => { if ($("composer").classList.contains("onbox")) placeComposer(); }, { passive: true, capture: true });
   // the floating Comment button: shown at a selection inside one script line, below it (phones show their own
   // copy/paste menu above a selection)
   let selFor = null;
@@ -1529,12 +1564,12 @@ button { cursor: pointer; }
     const k = host ? [draft.x, draft.y, draft.w, draft.h, !!S.draft].join() : "";
     if (k === draftKey && (!draftBox || draftBox.parentNode === host)) return;
     draftKey = k;
-    if (!host) { if (draftBox) draftBox.remove(); draftBox = null; placeComposer(); return; }
+    if (!host) { if (draftBox) draftBox.remove(); draftBox = null; renderLineTarget(); return; }
     if (!draftBox) { draftBox = el("div", "box draft"); draftBox.append(el("span", "lbl", "new note")); }
     if (draftBox.parentNode !== host) host.append(draftBox);
     draftBox.firstChild.hidden = !!S.draft;
     place(draftBox, draft);
-    placeComposer();
+    if (!S.draft) renderLineTarget();
   }
   const draftSoon = perFrame(renderDraft);
   // pointer positions as fractions of the overlay, against its box read once at the press
@@ -1646,7 +1681,7 @@ button { cursor: pointer; }
     const card = el("div", "note " + n.status);
     card.dataset.id = n.id;
     const top = el("div", "top");
-    const span = n.t != null ? fmt(n.t) + (n.tEnd != null ? "–" + fmt(n.tEnd) : "") : null;
+    const span = n.t != null ? timeSpan(n.t, n.tEnd) : null;
     const where = isSet ? (n.item ? n.item + (span ? " · " + span : "") : "Whole set")
       : n.line != null ? "Line " + (+n.line + 1) : span ?? "Whole cut";
     const boxed = !!reg(n.region);
@@ -1670,7 +1705,8 @@ button { cursor: pointer; }
     top.append(el("span", "st", n.status === "fixed" ? (n.fixedIn ? "Fixed in v" + n.fixedIn : "Fixed") : n.status === "open" ? "" : STATUS_LABEL[n.status] || n.status));
     card.append(top);
     if (n.quote) card.append(el("div", "quote", "“" + n.quote + "”"));
-    if (S.editing === n.id) card.append(editBox(n));
+    const writable = S.canWrite && S.db && !S.viewV;
+    if (writable && S.editing === n.id) card.append(editBox(n));
     else if (n.text) card.append(el("div", "body", n.text));   // a take-only note has no words
     const take = !isSet && takeOf(n);
     if (take) {
@@ -1681,11 +1717,11 @@ button { cursor: pointer; }
     }
     if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude: "), document.createTextNode(n.reply)); card.append(r); }
     const acts = el("div", "acts");
-    if (S.canWrite && S.db && !S.viewV && S.editing !== n.id) {
+    if (writable && S.editing !== n.id) {
       if (n.status === "fixed") acts.append(act("Looks right", () => setStatus(n, "resolved"), true), act("Still wrong", () => setStatus(n, "open")));
       if (n.status === "open") acts.append(act("Resolve", () => setStatus(n, "resolved")));
       if (n.status === "resolved" || n.status === "wontfix") acts.append(act("Reopen", () => setStatus(n, "open")));
-      if (mine && unresolved(n)) acts.append(act("Edit", () => { S.editing = n.id; S.editText = n.text || ""; renderNotes(); }));
+      if (mine && unresolved(n)) acts.append(act("Edit", () => { S.editing = n.id; S.editText = n.text || ""; S.editFocus = true; renderNotes(); }));
       if (n.status === "open" && mine) acts.append(confirmAct("Delete", () => S.db.doc("notes/" + n.id).delete()
         .then(() => { const t = takeOf(n); if (t && S.assets) S.assets.delete(t.asset).catch(() => {}); }).catch(onWriteError)));
     }
@@ -1717,7 +1753,6 @@ button { cursor: pointer; }
     };
     const row = el("div", "acts"); row.append(save, cancel);
     box.append(ta, row);
-    requestAnimationFrame(() => { if (ta.isConnected && document.activeElement !== ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } });
     return box;
   }
   function renderNotes() {
@@ -1736,10 +1771,10 @@ button { cursor: pointer; }
       msg = S.viewV ? "No notes were written on v" + S.viewV + "." : all.length ? (S.filter === "done" ? "Nothing resolved yet." : "Nothing unresolved here. Switch to Resolved or All to see the rest.") :
         isSet ? "No notes yet. Pick an item and write what should change." : "No notes yet. Pause on a frame, or select words in the script, and write what should change.";
     }
-    const ctx = [isSet, S.canWrite, !!S.db, S.me, S.viewV, S.editing].join();
+    const ctx = [isSet, S.canWrite, !!S.db, S.me, S.viewV].join();
     const want = [];
     for (const n of list) {
-      const sig = ctx + JSON.stringify(n);
+      const sig = ctx + (S.editing === n.id) + JSON.stringify(n);   // only the note being edited rebuilds into the editor
       let x = noteCards.get(n.id);
       if (!x || x.sig !== sig) {
         const card = noteCard(n, isSet);
@@ -1756,6 +1791,11 @@ button { cursor: pointer; }
     // put the nodes in order, moving only the ones out of place
     want.forEach((node, i) => { if (box.children[i] !== node) box.insertBefore(node, box.children[i] || null); });
     while (box.children.length > want.length) box.lastElementChild.remove();
+    if (S.editFocus) {   // once, when Edit is pressed: a rebuild later must not take the cursor from wherever it is
+      S.editFocus = false;
+      const ta = box.querySelector(".editbox textarea");
+      if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    }
     renderMarks(); renderRegions(); renderScriptMarks();
   }
   function showLine(i) {
@@ -1924,7 +1964,7 @@ button { cursor: pointer; }
       drawAsked = false;
       const d = new Set(dirty); dirty.clear();
       if (d.has("room")) { refresh(); return; }       // refresh draws everything
-      if (d.has("notes")) { renderSide(); renderNotes(); renderVerdict(); renderCompare(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
+      if (d.has("notes")) { renderSide(); renderNotes(); renderVerdict(); renderApply(); renderCompare(); const e = entryOf(S.sel); if (e?.kind === "set") renderItems(e); }
       if (d.has("verdicts")) { renderSide(); renderVerdict(); }
     };
     if (document.hidden) setTimeout(go, 0); else requestAnimationFrame(go);   // hidden pages get no frames
@@ -1936,6 +1976,7 @@ button { cursor: pointer; }
     const user = await use("user");
     S.db = db;
     S.assets = await use("assets");
+    S.room = await use("room");
     S.mic = !!S.assets && await micUsable();
     if (!db) { $("title").textContent = "Sign in to review"; banner("This review room keeps its cuts and notes in claude.ai. Open it while signed in.", true); updateStamp(); renderNotes(); return; }
     S.me = user ? await user.id() : null;

@@ -7,6 +7,7 @@ folder (or `-C DIR`): `room.json` plus the CLI's state in `.cut-review/`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import subprocess
@@ -100,12 +101,22 @@ def _unique_key(s: str, used: set[str]) -> str:
 
 # What the published page needs from the artifact viewer. `downloads` lets the Download button save a video
 # (claude.ai pages can't download by themselves).
-CAPABILITIES = '{"db": {}, "user": {}, "assets": {}, "downloads": true}'
+CAPABILITIES = '{"db": {}, "user": {}, "assets": {}, "downloads": true, "room": {}}'
+
+
+def _template() -> str:
+    return resources.files("cut_review").joinpath("page/review-room.html").read_text()
+
+
+def _page_id(page: str) -> str:
+    return hashlib.sha256(page.encode()).hexdigest()[:16]
 
 
 def cmd_page(a) -> int:
     room = Room.load(a.room)
-    page = resources.files("cut_review").joinpath("page/review-room.html").read_text()
+    page = _template()
+    room.state["page"] = _page_id(page)   # which page this room was built from: older ones get a notice
+    room.save()
     title = html.escape(room.manifest.get("title") or "Cut Review Room")
     page = page.replace("<title>Cut Review Room</title>", f"<title>{title}</title>", 1)
     out = Path(a.output) if a.output else room.state_dir / "review-room.html"
@@ -312,7 +323,7 @@ def cmd_fix(a) -> int:
 
 
 def cmd_carry(a) -> int:
-    _print_batches(carry_writes(Room.load(a.room), a.id, [k.strip() for k in a.to.split(",") if k.strip()], a.text), "notes")
+    _print_batches(carry_writes(Room.load(a.room), a.id, a.to, a.text), "notes")
     return 0
 
 
@@ -402,7 +413,7 @@ def parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("carry", help="copy a note onto other cuts it says it applies to, linked back to it")
     s.add_argument("id", help="the owner's note id")
-    s.add_argument("--to", required=True, help="comma-separated cut or set keys")
+    s.add_argument("--to", required=True, type=lambda v: [k.strip() for k in v.split(",") if k.strip()], help="comma-separated cut or set keys")
     s.add_argument("--text", help="the words for the copies (default: the note's own)")
     s.set_defaults(fn=cmd_carry)
 
@@ -414,10 +425,25 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     try:
-        return a.fn(a)
+        code = a.fn(a)
     except RoomError as e:
         print(f"cut-review: {e}", file=sys.stderr)
         return 1
+    if a.fn not in (cmd_init, cmd_page):
+        _page_notice(a.room)
+    return code
+
+
+def _page_notice(folder: str) -> None:
+    """A published room whose page is older than this cut-review's gets told to republish it, so the room has
+    the newest page (notes, buttons, fixes)."""
+    try:
+        room = Room.load(folder)
+    except RoomError:
+        return
+    if room.state.get("artifact") and room.state.get("page") != _page_id(_template()):
+        print(f"cut-review: this room's page is older than this cut-review. Run `cut-review page`, then publish it with the "
+              f"Artifact tool to {room.state['artifact']} (same url) with capabilities {CAPABILITIES}.", file=sys.stderr)
 
 
 if __name__ == "__main__":

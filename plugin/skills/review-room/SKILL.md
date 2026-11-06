@@ -44,7 +44,7 @@ the room project next to the work that renders the videos; never commit `.cut-re
    A cut can also list `alts` (`[{key, label, file}]`: alternate videos such as a version with voice or music),
    switched under the player; `videoLabel` names the base video (default "Original"), `altDefault` the one shown first.
 2. `cut-review page` writes the page. Publish it with `Artifact`: `file_path` = the printed path, `icon: "video"`,
-   `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`, a one-line `description`. Then `cut-review link <url>`.
+   `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true, "room": {}}`, a one-line `description`. Then `cut-review link <url>`.
 3. `cut-review uploads` prints the files to upload in calls of at most 25. For each call: `Artifact` with `url`,
    `asset: true`, `file_paths` = that list. Save the tool's result text to a file and run `cut-review assets <file>`.
    If it answers `cut-review: ... is not valid JSON`, the saved text was cut or edited: save the tool's result again, unchanged.
@@ -61,6 +61,11 @@ the room project next to the work that renders the videos; never commit `.cut-re
    select a few characters for just those, or press Comment for the whole line; the note opens right under the line.
 
 ## Apply the owner's notes
+
+The owner may ask from the room itself: its **Ask Claude to apply N notes** button sends you
+`{request: "apply_notes", room, openNotes, cuts}` from the page, after the owner confirms it in claude.ai's own dialog.
+Treat it like "apply my notes" for that room (the one linked in the room project whose title matches), and run the
+steps below. It carries no note text: always export the notes.
 
 1. Export them: `ArtifactData` `list`, `collection: "notes"`, `query: {"limit": 1000}`,
    `out_dir: "<room>/.cut-review/export"`. The files hold only the note bodies; the tool's result text names each
@@ -136,8 +141,10 @@ like room takes, with no downloads.
 - A pinned write fails because a document changed (the owner edited a note meanwhile): export the notes again and
   rerun `cut-review fix` for those notes; for records, `cut-review build --all`.
 - `cut-review status` shows the link, pending uploads, each cut's version in the room and builds not yet written.
+- **`this room's page is older than this cut-review`** on stderr: run `cut-review page` and publish it to the url it
+  names, with the capabilities it names, before anything else, so the owner gets the newest page.
 - The page is the same for every room. To update it after a cut-review upgrade, `cut-review page` and publish the
   file to the same `url` (omit `capabilities` and `icon`; they carry forward). A room published before the
   Download button has no `downloads` capability, so the button does nothing there: publish it once with the full
-  `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}` (a capabilities object replaces the
+  `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true, "room": {}}` (a capabilities object replaces the
   stored one, it doesn't add to it).

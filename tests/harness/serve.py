@@ -9,6 +9,7 @@ ranges so videos seek. Notes and verdicts written on the page live in memory unt
 also saved for real, as a browser download).
 Files the page uploads (voice takes) go to `.cut-review/harness-assets/` and are served at `/_blob/<id>` too;
 `window.__assets` lists uploads and deletions. `?noassets` / `?nodownloads` leave those capabilities out.
+`window.__sent` lists what Ask Claude sent; `?noclaude` makes it unavailable.
 `?mic=fake` gives the page a microphone that plays a tone (as if the frame allowed the mic); `?mic=blocked`
 answers like claude.ai today (permission denied).
 `.cut-review/harness-notes.json` (`{id: note}`), if the room has one, seeds the notes.
@@ -95,7 +96,14 @@ MOCK = r"""<script>
       return dest.stream;
     };
   }
-  const caps = { db, user, downloads, assets };
+  // `room` stand-in for "Ask Claude to apply": records each send in window.__sent; `?noclaude` says nothing is beside
+  // the page to take it (a room served locally has no Claude chat next to it)
+  window.__sent = [];
+  const room = {
+    canSendToClaudeSession: async () => (location.search.includes("noclaude") ? "no_session" : "available"),
+    sendToClaudeSession: (data, opts) => { window.__sent.push({ data, deliver: opts?.deliver }); return Promise.resolve({ to: "pane" }); },
+  };
+  const caps = { db, user, downloads, assets, room };
   window.claude = { use: (n) => new Promise((r) => setTimeout(() => r(caps[n] ?? null), 30)) };
 })();
 </script>

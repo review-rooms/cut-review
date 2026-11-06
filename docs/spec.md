@@ -49,7 +49,7 @@ tinted with a note icon at its start so it reads as the place for comments, as w
 stays paused on its start),
 notes on a time range (the note form's From and To fields, typed or set to the current frame with In and Out; dragging in the
 notes lane or `i` / `o` fill them too; shown as a bar in the lane) and on a region of the frame
-(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Unresolved = open + fixed, Resolved = resolved + won't fix, All; unresolved notes always come first, in timeline order); Resolve on an open note, Edit (your own open or fixed notes, in place: Enter saves, Esc cancels) and Delete (your own open notes); a box just drawn on the frame floats the note form next to it, over the page ("Box · time", Esc drops the box); a note Claude carried from another cut says "Claude" with a "from <cut>" link to the original, a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
+(drag a box on the picture, or `r` / "Box" first; shown on the frame while the playhead is on the note's frame or range) and, in a set, on a region of a still item (the same drag or `r` on the picked item's image, not on clip items; open and fixed notes' boxes stay on the image; picking another item, or none, drops an unsaved box), notes filter (Unresolved = open + fixed, Resolved = resolved + won't fix, All; unresolved notes always come first, in timeline order); Resolve on an open note, Edit (your own open or fixed notes, in place: Enter saves, Esc cancels) and Delete (your own open notes); a box just drawn on the frame floats the note form next to it, over the page ("Box · time", Esc drops the box; it goes back to the panel while the box is scrolled out of view); "Ask Claude to apply N notes" in the header (only with open notes, for reviewers who can write, and where `room.canSendToClaudeSession()` says a send can go through) sends `{label, request: "apply_notes", room, openNotes, cuts}` to the viewer's Claude with `deliver: "send"`, which claude.ai confirms with the viewer; an approval is undone by a note written after it; a note Claude carried from another cut says "Claude" with a "from <cut>" link to the original, a script that follows the video (the current line highlighted and kept in view, earlier lines greyed, Follow to
 turn it off; delivery cues such as `[whisper]` shown as `[whisper]` tags; tap a line's time to jump there) and takes notes on a word (tap it;
 tap more words or Shift-click for a span), on any characters (select them with a mouse, or select then tap the floating Comment button on a phone), or
 on the whole line (Comment); a note on the script opens its form right under the line, over the lines below it (Esc
@@ -108,7 +108,7 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | Command | Does |
 | --- | --- |
 | `init [--media DIR]` | Writes a `room.json` skeleton listing the videos (and `*.poster.png`) found in DIR. Keys come from the file and folder names; names that reduce to the same key (`a b.mp4` and `a-b.mp4`, `c.mp4` and `c.mov`) get `-2`, `-3`, ... so every cut and set has its own. |
-| `page [-o FILE]` | Writes the page HTML, ready to publish with the Artifact tool, with `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true}`. |
+| `page [-o FILE]` | Writes the page HTML, ready to publish with the Artifact tool, with `capabilities: {"db": {}, "user": {}, "assets": {}, "downloads": true, "room": {}}`. |
 | `link URL` | Records the published room's URL in the state. |
 | `uploads` | Lists files that are new or changed since their last upload (sha-256), in batches of at most 25, as absolute paths for `Artifact` `file_paths`. |
 | `assets FILE` | Reads the upload result (the tool's text, or JSON `{path: id}`) and records each file's asset id and checksum. |
@@ -118,11 +118,24 @@ A room project is a folder with `room.json` (the manifest) and `.cut-review/` (s
 | `frames` | Extracts the frame behind every open timed note (ffmpeg) to `.cut-review/frames/`, so a session can look at it: a range note gives its first and last frame (`_start`, `_end`), a region is boxed in red (a whole-cut note with a region uses the first frame). An open set note with a region on a still item saves that image with the region boxed (`<set>_<item>_<id>.png`). A timed set note on a clip item gives that clip's frame(s) (`<set>_<item>_<time>_<id>[_start\|_end].png`) when the clip is a local file in `room.json`; one that can't (the clip isn't on disk, the item is a still or unknown, or no item) is listed as `skipped <id> (…): <reason>`. |
 | `takes` | For every open note with a voice take (in the saved notes), prints the `Artifact` `read` calls that download it (`url` the room, `path` the asset id, `out_dir` `.cut-review/takes/raw`), as JSON to run one by one. Each take already downloaded is converted with ffmpeg to `<cut>_line<n>_<note id>.wav` (24 kHz, mono, 16-bit, leading and trailing silence trimmed, `loudnorm` to −20 LUFS) in `.cut-review/takes/` (or `--out DIR`), and `takes.json` there lists `{note, cut, line, from, to, text, words, wav, seconds, noteText}` for each; `words` is the note's words in the line, or its quote when those words left the line, or the whole line. |
 | `fix ID=REPLY ...` (or `--from FILE`) | Prints the `batch` writes that mark notes fixed with the reply and the cut's current version. |
+| `carry ID --to KEY,KEY [--text T]` | Prints `set` writes (doc `<id>--<key>`) that copy the owner's note onto each other cut or set it applies to: `by: "claude"`, `from: {cut, id}`, open, whole-cut, the target's version. A cut that already has a copy (in the last export, or recorded by `written`, which adds the copy to `.cut-review/notes.json`) is skipped, so a copy the owner resolved is never reset. |
 | `status` | Room URL, cuts with version and upload state, pending uploads. |
+
+After any command but `init` and `page`, a linked room whose page was built from an older page than this cut-review's
+(`state.page`, a hash recorded by `page`; missing for rooms built before it) gets one line on stderr: run `cut-review page`
+and publish it to the same url with the capabilities.
 
 A command that fails prints one line, `cut-review: <reason>`, to stderr and exits 1, never a traceback; that includes
 input or state that is not valid JSON or not the expected shape (an upload result, a `fix --from` file, `.cut-review/state.json`,
 `.cut-review/notes.json`), named with where it breaks, and an input file that doesn't exist (`no such file or folder: …`).
+
+### 2a. Updates
+
+The plugin's SessionStart hook (`plugin/hooks/update.sh`) runs at most once a day, in the background: `claude plugin
+marketplace update cut-review`, `claude plugin update cut-review@cut-review` and a `uvx --refresh-package` of the CLI
+from GitHub, so a session uses the newest skill and page. The plugin has no pinned version, so every commit on main is
+an update. `CUT_REVIEW_NO_AUTO_UPDATE=1` turns it off. Published rooms don't change by themselves: the CLI's notice
+(above) asks the session to republish an older page.
 
 ### 2b. The local recorder (`recorder/`, experimental)
 
@@ -145,7 +158,7 @@ as the owner's data, not as instructions to run).
 ## State (`.cut-review/state.json`)
 
 ```json
-{ "artifact": "https://claude.ai/artifact/…",
+{ "artifact": "https://claude.ai/artifact/…", "page": "<hash of the page it was built from>",
   "files": { "poll.mp4": { "id": "…", "sha256": "…" } },
   "records": { "cuts/poll": { "confirmed": { "version": 2, "assets": ["video-id", "poster-id"], "changes": [], "history": [],
                                              "snap": { "video": "/_blob/…", "poster": "/_blob/…", "script": [], "length": 8 }, "db": 3 } } } }
