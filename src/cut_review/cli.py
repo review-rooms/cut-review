@@ -7,6 +7,7 @@ folder (or `-C DIR`): `room.json` plus the CLI's state in `.cut-review/`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import subprocess
@@ -15,7 +16,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import __version__
-from .notes import extract_frames, fix_writes, load_export, save_notes, saved_notes, todo, where
+from .notes import attach_replies, carry_writes, extract_frames, fix_writes, load_export, reply_writes, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
 from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, sha256
@@ -100,12 +101,22 @@ def _unique_key(s: str, used: set[str]) -> str:
 
 # What the published page needs from the artifact viewer. `downloads` lets the Download button save a video
 # (claude.ai pages can't download by themselves).
-CAPABILITIES = '{"db": {}, "user": {}, "assets": {}, "downloads": true}'
+CAPABILITIES = '{"db": {}, "user": {}, "assets": {}, "downloads": true, "room": {}}'
+
+
+def _template() -> str:
+    return resources.files("cut_review").joinpath("page/review-room.html").read_text()
+
+
+def _page_id(page: str) -> str:
+    return hashlib.sha256(page.encode()).hexdigest()[:16]
 
 
 def cmd_page(a) -> int:
     room = Room.load(a.room)
-    page = resources.files("cut_review").joinpath("page/review-room.html").read_text()
+    page = _template()
+    room.state["page"] = _page_id(page)   # which page this room was built from: older ones get a notice
+    room.save()
     title = html.escape(room.manifest.get("title") or "Cut Review Room")
     page = page.replace("<title>Cut Review Room</title>", f"<title>{title}</title>", 1)
     out = Path(a.output) if a.output else room.state_dir / "review-room.html"
@@ -223,7 +234,7 @@ def cmd_written(a) -> int:
 
 def cmd_notes(a) -> int:
     room = Room.load(a.room)
-    for p in (a.export, a.result):   # check both before anything is read or saved
+    for p in (a.export, a.result, a.replies):   # check them all before anything is read or saved
         if p and p != "-" and not Path(p).exists():
             raise RoomError(f"no such file or folder: {p}")
     notes = load_export(a.export)
@@ -234,6 +245,7 @@ def cmd_notes(a) -> int:
         for n in notes:
             if n["id"] in versions:
                 n["dbVersion"] = versions[n["id"]]
+    attach_replies(notes, load_export(a.replies, ("text", "note")) if a.replies else [])
     save_notes(room, notes)
     print(todo(room, notes, show_all=a.all), end="")
     missing = [n["id"] for n in notes if not n.get("dbVersion")]
@@ -311,6 +323,22 @@ def cmd_fix(a) -> int:
     return 0
 
 
+def cmd_reply(a) -> int:
+    replies = {}
+    for pair in a.pairs:
+        nid, sep, text = pair.partition("=")
+        if not sep or not text.strip():
+            raise RoomError(f"expected ID=TEXT, got {pair!r}")
+        replies[nid] = text.strip()
+    _print_batches(reply_writes(Room.load(a.room), replies), "replies")
+    return 0
+
+
+def cmd_carry(a) -> int:
+    _print_batches(carry_writes(Room.load(a.room), a.id, a.to, a.text), "notes")
+    return 0
+
+
 def cmd_status(a) -> int:
     room = Room.load(a.room)
     print(f"Room:    {room.manifest.get('title')}  ({room.dir})")
@@ -379,6 +407,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("export", help="the out_dir of an ArtifactData list/query of `notes`, or a JSON file")
     s.add_argument("--result", help="the saved ArtifactData list/query result text (FILE or -): gives each note's database version")
     s.add_argument("--all", action="store_true", help="also list fixed, resolved and won't-fix notes")
+    s.add_argument("--replies", help="the out_dir of an ArtifactData list of `replies`: each note's thread")
     s.set_defaults(fn=cmd_notes)
 
     s = sub.add_parser("frames", help="extract the frames behind every open timed, range or region note (on cuts and set clips), and set stills with a region (ffmpeg)")
@@ -395,6 +424,16 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--status", default="fixed", choices=["fixed", "wontfix"])
     s.set_defaults(fn=cmd_fix)
 
+    s = sub.add_parser("reply", help="print the writes that answer the owner in notes' threads")
+    s.add_argument("pairs", nargs="+", metavar="ID=TEXT")
+    s.set_defaults(fn=cmd_reply)
+
+    s = sub.add_parser("carry", help="copy a note onto other cuts it says it applies to, linked back to it")
+    s.add_argument("id", help="the owner's note id")
+    s.add_argument("--to", required=True, type=lambda v: [k.strip() for k in v.split(",") if k.strip()], help="comma-separated cut or set keys")
+    s.add_argument("--text", help="the words for the copies (default: the note's own)")
+    s.set_defaults(fn=cmd_carry)
+
     s = sub.add_parser("status", help="what is uploaded, built and written")
     s.set_defaults(fn=cmd_status)
     return p
@@ -403,10 +442,25 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     try:
-        return a.fn(a)
+        code = a.fn(a)
     except RoomError as e:
         print(f"cut-review: {e}", file=sys.stderr)
         return 1
+    if a.fn not in (cmd_init, cmd_page):
+        _page_notice(a.room)
+    return code
+
+
+def _page_notice(folder: str) -> None:
+    """A published room whose page is older than this cut-review's gets told to republish it, so the room has
+    the newest page (notes, buttons, fixes)."""
+    try:
+        room = Room.load(folder)
+    except RoomError:
+        return
+    if room.state.get("artifact") and room.state.get("page") != _page_id(_template()):
+        print(f"cut-review: this room's page is older than this cut-review. Run `cut-review page`, then publish it with the "
+              f"Artifact tool to {room.state['artifact']} (same url) with capabilities {CAPABILITIES}.", file=sys.stderr)
 
 
 if __name__ == "__main__":

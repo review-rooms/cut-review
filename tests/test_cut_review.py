@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from cut_review import cli
-from cut_review.notes import extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, spoken, take_of, todo, where
+from cut_review.notes import carry_writes, extract_frames, fix_writes, load_export, marked_line, quote_span, region_of, save_notes, saved_notes, spoken, take_of, todo, where
 from cut_review.parse import parse_assets, parse_listed_versions, parse_written
 from cut_review.records import build_records, chunks, confirm, stage
 from cut_review.room import Room, RoomError
@@ -696,17 +696,12 @@ def test_page_layout_puts_the_note_form_under_the_script_line(room_dir, capsys):
     html = page_html(room_dir)
     # the form is one element: docked in the notes panel, floated under a script line while a note is on one
     assert html.count('id="composer"') == 1 and 'id="dock"' in html and 'id="scriptBox"' in html
-    assert '$("scriptBox").append(c)' in html and '$("dock").append(c)' in html
-    assert "placeComposer();" in html.split("function renderLineTarget()")[1].split("}")[0]   # follows the line
-    assert 'ev.key === "Escape" && S.line' in html                                            # Esc leaves the line
     assert "if (q) { pickLine(i, q); return; }" in html                  # selecting words opens the note on them
     assert "S.line ||" in html.split("function followScript(t)")[1].split("function ")[0]   # no follow-scroll while writing
 
 
-def test_page_verdict_toggles_back_to_unreviewed(room_dir, capsys):
+def test_page_video_has_no_native_controls(room_dir, capsys):
     html = page_html(room_dir)
-    assert 'b.getAttribute("aria-pressed") === "true" ? "none" : b.dataset.v' in html
-    assert 'data-v="none"' not in html                  # two buttons: Needs changes, Approve vN
     assert "<video id=\"vid\" playsinline preload" in html and " controls preload" not in html.split('id="vid"')[1][:40]
 
 
@@ -1029,16 +1024,11 @@ def test_todo_shows_a_take_only_note(room_dir, tmp_path):
 
 # ---------------------------------------------------------------- version history on the page
 
-def test_page_needs_changes_on_an_older_version_is_not_pressed(room_dir, capsys):
+def test_page_has_no_needs_changes_verdict(room_dir, capsys):
+    # unresolved notes say a cut needs changes; the harness checks Approve, Resolve, Edit and the box form by behaviour
     html = page_html(room_dir)
-    rule = html[html.index("const verdictOf = "):]
-    rule = rule[:rule.index("\n")]
-    assert 'v?.state === "changes" && v.version != null && +v.version < (rawEntry(key)?.version || 1) ? null : v' in rule
-    assert "approved" not in rule                                               # an approval stays as it was
-    assert "const v = verdictOf(key)?.state;" in html.split("function renderSide()")[1].split("function ")[0]   # the cut list dot
-    verdict = html.split("function renderVerdict()")[1].split("\n  }\n")[0]
-    assert 'const v = verdictOf(S.sel)?.state || "none"' in verdict
-    assert '"Needs changes on v" + raw.version' in verdict and 'id="staleV"' in html
+    assert 'data-v="changes"' not in html and "verdictOf" not in html and ">Needs changes</button>" not in html
+    assert "renderVerdict(); renderApply();" in html.split('if (d.has("notes"))')[1].split("\n")[0]   # a resolve frees Approve
 
 
 def test_page_version_dropdown_replaces_the_log_and_lists_history(room_dir, capsys):
@@ -1060,7 +1050,7 @@ def test_page_past_version_shows_its_video_script_items_and_notes(room_dir, caps
         assert k in past
     notes = html.split("const notesForSel = ")[1].split(";\n")[0]
     assert "(!S.viewV || (n.version || 1) === S.viewV)" in notes
-    assert 'if (S.filter === "active" && !S.viewV)' in html                      # every status on a past version
+    assert "let list = S.viewV ? all :" in html                      # every status on a past version
     assert "selNotes = null; if (past) vid.pause(); }" in html                   # the cache follows the version
     assert "S.viewV = v !== undefined ? v : changed ? null : S.viewV;" in html   # another cut: back to current
 
@@ -1073,7 +1063,6 @@ def test_page_past_version_is_read_only(room_dir, capsys):
     assert "if (S.viewV && /^[nior]$/.test(ev.key)) return;" in html
     assert "if (S.viewV) return;" in html.split("function pickLine(i, q)")[1].split("\n")[1]
     assert "const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false;" in html
-    assert "if (S.canWrite && S.db && !S.viewV)" in html                          # no Looks right / Reopen on the past
 
 
 # ---------------------------------------------------------------- compare two versions side by side
@@ -1147,3 +1136,59 @@ def test_page_cut_list_count_says_what_it_counts(room_dir, capsys):
     assert 'setAttr(x.count, "title", o ? o + (o === 1 ? " open note" : " open notes") : total.get(key) ? "Every note closed" : "");' in side
     assert ".count.open::before {" in html and "mask: var(--bubble)" in html     # a note bubble before the number
     assert '<span class="count open">2</span>open notes' in html and '<span class="count">✓</span>every note closed' in html
+
+
+def test_carry_copies_a_note_onto_other_cuts_once(room_dir, tmp_path, capsys):
+    # "this applies to the other cuts too": Claude's open copy on each, linked back, never twice
+    room = Room.load(room_dir)
+    save_notes(room, load_export(export(tmp_path, {
+        "n1": {"id": "n1", "version": 2, "data": {"cut": "poll", "t": 2, "text": "Logo too big, here and everywhere", "status": "open", "createdAt": "c"}},
+    })))
+    w = carry_writes(room, "n1", ["carousel", "poll", "carousel"])
+    assert [x["doc_id"] for x in w] == ["n1--carousel"] and w[0]["op"] == "set"
+    data = json.loads(Path(w[0]["file_path"]).read_text())
+    assert data["cut"] == "carousel" and data["by"] == "claude" and data["status"] == "open"
+    assert data["from"] == {"cut": "poll", "id": "n1"} and data["text"] == "Logo too big, here and everywhere" and data["t"] is None
+    # `written` puts the copy on the list, so carrying again before the next export skips it (never resets it)
+    confirm(room, parse_written('- set "notes"/"n1--carousel" (version 1)'))
+    assert carry_writes(room, "n1", ["carousel"]) == []
+    assert "carried from poll note n1" in todo(room, saved_notes(room))
+    with pytest.raises(RoomError, match="not a cut or set"):
+        carry_writes(room, "n1", ["nope"])
+    assert run(room_dir, "carry", "n1", "--to", "carousel") == 0 and "Nothing to write" in capsys.readouterr().out
+
+
+def test_an_old_page_in_a_linked_room_asks_to_republish(room_dir, capsys):
+    assert run(room_dir, "link", "https://claude.ai/artifact/abc") == 0
+    assert "page is older" in capsys.readouterr().err                 # linked, never built here: unknown page
+    assert run(room_dir, "page") == 0
+    capsys.readouterr()
+    assert run(room_dir, "status") == 0
+    assert "page is older" not in capsys.readouterr().err             # built from this cut-review's page
+    room = Room.load(room_dir); room.state["page"] = "0" * 16; room.save()
+    assert run(room_dir, "status") == 0
+    err = capsys.readouterr().err
+    assert "page is older" in err and "https://claude.ai/artifact/abc" in err and '"room": {}' in err
+
+
+def test_threads_show_in_the_todo_and_claude_answers_with_reply(room_dir, tmp_path, capsys):
+    # the owner replied on a fixed note: it comes back on the to-do (↩) with its thread until Claude answers
+    notes = export(tmp_path, {"n1": {"id": "n1", "version": 3, "data": {"cut": "poll", "t": 2, "text": "Logo smaller", "status": "fixed", "reply": "Made it 20% smaller."}}})
+    rdir = tmp_path / "replies"; rdir.mkdir()
+    (rdir / "r1.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}))
+    assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
+    out = capsys.readouterr().out
+    assert "[fixed] ↩" in out and "Claude: Made it 20% smaller." in out and "Owner: Why 20%?" in out and "1 note(s) have a reply" in out
+    room = Room.load(room_dir)
+    assert saved_notes(room)[0]["thread"] == [{"by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}]
+    assert len(load_export(rdir)) == 0                                 # a reply is never read as a note
+    assert run(room_dir, "reply", "n1=It matched the safe area.") == 0
+    w = json.loads(capsys.readouterr().out.split("pass each list as `writes`:")[1].split("# batch 1 of 1")[1].split("\nThen")[0])
+    assert w[0]["op"] == "set" and w[0]["collection"] == "replies" and w[0]["doc_id"].startswith("n1--claude-")
+    data = json.loads(Path(w[0]["file_path"]).read_text())
+    assert data["note"] == "n1" and data["by"] == "claude" and data["text"] == "It matched the safe area." and data["cut"] == "poll"
+    # once Claude's answer is in the thread, the note isn't waiting any more
+    (rdir / "r2.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "claude", "text": "It matched the safe area.", "at": "2026-11-06T10:05:00Z"}))
+    assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
+    assert "↩" not in capsys.readouterr().out
+    assert run(room_dir, "reply", "nope=x") == 1
