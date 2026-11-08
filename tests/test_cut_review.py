@@ -987,7 +987,7 @@ def test_page_times_notes_on_a_picked_set_clip(room_dir, capsys):
     assert "t: tm ? Math.round(S.stampT * 100) / 100 : null" in html                 # and the note keeps its time
     assert "        t: isSet ||" not in html
     assert "S.stampT = stampNow(); S.stampLocked = true;" in html                    # In stamps the clip's time
-    assert "const v = itemCards.get(n.item)?.vid;" in html                           # a clip note seeks its clip
+    assert "const v = cardOf(n.item)?.vid;" in html                                  # a clip note seeks its clip (grid or preview)
     assert 'n.item + (span ? " · " + span : "")' in html                             # and shows its time
     assert "if (!S.item && !S.stampLocked && S.stampEnd == null)" in html            # paint() leaves a clip's stamp alone
     assert "innerHTML" not in html
@@ -1247,7 +1247,10 @@ def test_a_cut_without_video_needs_a_storyboard_and_storyboards_name_a_cut(room_
     _manifest(room_dir, lambda m: (m["sets"][0].pop("storyboardFor"), m["sets"][0].update(platform="myspace")))
     with pytest.raises(RoomError, match="platform must be one of"):
         Room.load(room_dir)
-    _manifest(room_dir, lambda m: (m["sets"][0].pop("platform"), m["sets"].extend([
+    _manifest(room_dir, lambda m: m["sets"][0].update(platform="tiktok", account=["@me"]))
+    with pytest.raises(RoomError, match="account is the handle"):
+        Room.load(room_dir)
+    _manifest(room_dir, lambda m: (m["sets"][0].pop("account"), m["sets"][0].pop("platform"), m["sets"].extend([
         {"key": "b1", "storyboardFor": "poll", "dir": "carousel"}, {"key": "b2", "storyboardFor": "poll", "dir": "carousel"}])))
     with pytest.raises(RoomError, match="two storyboards"):
         Room.load(room_dir)
@@ -1262,12 +1265,12 @@ def test_a_caption_named_like_a_slide_is_refused(room_dir, capsys):
 
 
 def test_carousel_captions_are_text_items_and_rewording_is_a_new_version(room_dir, capsys):
-    _manifest(room_dir, lambda m: m["sets"][0].update(platform="instagram", captions=[{"label": "Caption A", "text": "Swipe →"}, {"text": "Save this"}]))
+    _manifest(room_dir, lambda m: m["sets"][0].update(platform="instagram", account="notebook.app", captions=[{"label": "Caption A", "text": "Swipe →"}, {"text": "Save this"}]))
     uploaded(room_dir, capsys)
     room = Room.load(room_dir)
     recs, _ = rebuild(room)
     car = recs["sets/carousel"]
-    assert car["platform"] == "instagram"
+    assert car["platform"] == "instagram" and car["account"] == "notebook.app"
     assert car["items"][2:] == [{"name": "Caption A", "kind": "text", "text": "Swipe →"}, {"name": "Caption 2", "kind": "text", "text": "Save this"}]
     written_all(room)
     room.save()

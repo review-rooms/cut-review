@@ -80,7 +80,7 @@ from it, add `file` to the cut, build: the cut and its storyboard link to each o
 
 A carousel is a set with `platform` (`instagram`, `tiktok` or `youtube`), its slides as `items` in order (stills, and
 for Instagram also clips: a mixed photo-and-video carousel), each with the words on it as `text`, and `captions`
-(`[{label, text}]`): the post caption, or several to choose from. Each caption is an item the owner can comment on,
+(`[{label, text}]`): the post caption, or several to choose from, and `account`: the handle the room's **Post preview** shows (the carousel on a phone as Instagram, TikTok or YouTube show it, where the owner swipes and comments). Each caption is an item the owner can comment on,
 and rewording one is a new version. Sizes: Instagram 4:5 (1080 × 1350, up to 20 slides), TikTok photo mode 9:16
 (1080 × 1920), YouTube posts 1:1 or 4:5. The room's **Safe zones** menu (each viewer's own, off by default) draws
 where each platform's buttons, caption and tabs sit, on the iPhone or Android status and navigation bars: check your

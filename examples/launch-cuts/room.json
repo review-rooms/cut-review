@@ -105,7 +105,14 @@
    "group": "social",
    "aspect": "4:5",
    "description": "Three stills and a short clip, in file-name order.",
-   "platform": "instagram"
+   "platform": "instagram",
+   "account": "notebook.app",
+   "captions": [
+    {
+     "label": "Caption",
+     "text": "Your notes, but they answer back. Ask a question and get your own words back, with the page they came from. Out March 1st. #notes #productivity @notebook.app"
+    }
+   ]
   },
   {
    "key": "launch-film-board",
@@ -204,6 +211,37 @@
     {
      "label": "Caption B",
      "text": "I asked my notes a question and they answered. Out March 1."
+    }
+   ],
+   "account": "notebook.app"
+  },
+  {
+   "key": "youtube-post",
+   "title": "YouTube post",
+   "short": "YouTube post",
+   "group": "social",
+   "aspect": "1:1",
+   "platform": "youtube",
+   "account": "notebook.app",
+   "description": "A community post: three images and its text.",
+   "items": [
+    {
+     "file": "carousel/01-question.png",
+     "name": "Image 1"
+    },
+    {
+     "file": "carousel/02-product.png",
+     "name": "Image 2"
+    },
+    {
+     "file": "carousel/03-date.png",
+     "name": "Image 3"
+    }
+   ],
+   "captions": [
+    {
+     "label": "Post text",
+     "text": "Three things your notes can do now that they answer back. Which one would you use first? #notes"
     }
    ]
   }

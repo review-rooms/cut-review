@@ -125,7 +125,7 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
             "description": s.get("description", ""), "items": items,
             "version": version, "changes": changes,
         }
-        for k in ("platform", "storyboardFor"):
+        for k in ("platform", "storyboardFor", "account"):
             if s.get(k):
                 data[k] = s[k]
         if history:

@@ -172,5 +172,7 @@ def validate_manifest(m: dict) -> None:
                 raise RoomError(f"set {k} needs items or dir")
             if kind == "sets" and e.get("platform") not in (None, *PLATFORMS):
                 raise RoomError(f"set {k}: platform must be one of {', '.join(PLATFORMS)}")
+            if kind == "sets" and not isinstance(e.get("account", ""), str):
+                raise RoomError(f"set {k}: account is the handle the post preview shows, as text")
             if kind == "sets" and not all(isinstance(c, dict) and c.get("text") for c in e.get("captions") or []):
                 raise RoomError(f"set {k}: captions are [{{label, text}}]")

@@ -9,6 +9,7 @@ A made-up product launch with two cuts, two storyboards and two carousels, to tr
   their voice-over and seconds, played as an animatic.
 - `teaser-board`: the storyboard the teaser was made from; the teaser and it link to each other.
 - `tiktok-photos`: a TikTok photo carousel, three slides with their words and two captions to pick from.
+- `youtube-post`: a YouTube post, three images and its text. The carousels set `account`, the handle their post preview shows.
 
 ```bash
 ./make-media.sh                      # placeholder renders (test patterns + tones) in renders/, needs ffmpeg

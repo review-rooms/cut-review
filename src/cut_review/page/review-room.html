@@ -312,6 +312,110 @@ button { cursor: pointer; }
 .item.textitem { grid-column: 1 / -1; cursor: pointer; }
 .item.textitem .itext { padding: 12px 14px 4px; font-size: 14px; color: var(--ink); }
 .setbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+/* the post preview: a carousel as the Instagram or TikTok app shows it, on a phone */
+.pvwrap { display: flex; justify-content: center; padding: 11px 0 32px; }
+.phone { --bg: #fff; --fg: #000; --mut: #737373; --sep: #dbdbdb; --tag: #00376b;
+  position: relative; display: flex; flex-direction: column; width: min(360px, calc(100% - 22px)); aspect-ratio: 9 / 19.5; min-height: 760px;
+  border-radius: 38px; overflow: hidden; background: var(--bg); color: var(--fg); box-shadow: 0 0 0 10px #111, 0 0 0 11px #3a3a3a, var(--shadow);
+  font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-user-select: none; user-select: none; }
+.phone.tt { --bg: #000; --fg: #fff; --mut: rgba(255, 255, 255, .75); --sep: #222; --tag: #fff; }
+:root[data-theme="dark"] .phone.ig { --bg: #000; --fg: #f5f5f5; --mut: #a8a8a8; --sep: #262626; --tag: #e0f1ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .phone.ig { --bg: #000; --fg: #f5f5f5; --mut: #a8a8a8; --sep: #262626; --tag: #e0f1ff; } }
+.phone::after { content: ""; position: absolute; left: 50%; bottom: 7px; width: 120px; height: 5px; margin-left: -60px; border-radius: 3px; background: var(--fg); z-index: 3; pointer-events: none; }
+.phone svg { flex: none; }
+.pvstatus { flex: none; display: flex; justify-content: space-between; align-items: center; height: 44px; padding: 4px 30px 0; font-size: 15px; font-weight: 600; }
+.pvtrack { display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.pvtrack::-webkit-scrollbar { display: none; }
+.pvslide { position: relative; flex: 0 0 100%; overflow: hidden; scroll-snap-align: start; scroll-snap-stop: always; }
+.pvslide img, .pvslide video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; -webkit-user-drag: none; }
+.tt .pvslide img, .tt .pvslide video { object-fit: contain; }
+.pvarrow { position: absolute; top: 50%; z-index: 2; width: 26px; height: 26px; margin-top: -13px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(255, 255, 255, .85); color: #262626; box-shadow: 0 1px 4px rgba(0, 0, 0, .3); }
+.pvarrow.l { left: 8px; } .pvarrow.r { right: 8px; }
+.tt .pvarrow { top: 30%; }   /* clear of the right-hand buttons */
+.pvdots { display: flex; gap: 4px; justify-content: center; align-items: center; }
+.pvdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--sep); }
+.pvdots i.on { background: #0095f6; }
+.pvcap { position: relative; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; border-radius: 4px; }
+.pvcap.open { display: block; }
+.pvcap:empty { display: none; }
+.pvcap b { font-weight: 600; }
+.pvcap .tag { color: var(--tag); }
+.pvcap.picked { outline: 2px solid var(--open); outline-offset: 2px; }
+.pvmore { position: absolute; right: 0; bottom: 0; padding: 0 0 0 26px; border: 0; font: inherit; color: var(--mut); background: linear-gradient(to right, transparent, var(--bg) 22px); cursor: pointer; }
+.pvav { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #c7c7c7; color: #fff; font-size: 14px; font-weight: 600; }
+/* Instagram: a post opened from a profile */
+.ig .pvtop { flex: none; display: grid; grid-template-columns: 44px 1fr 44px; place-items: center; height: 44px; font-size: 16px; font-weight: 700; }
+.ig .pvhead { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.ig .pvhead b { flex: 1; font-size: 14px; font-weight: 600; }
+.ig .pvmedia { position: relative; flex: none; background: #000; }
+.ig .pvmedia .pvtrack { position: absolute; inset: 0; }
+.pvcount { position: absolute; top: 12px; right: 12px; z-index: 2; padding: 3px 8px; border-radius: 12px; background: rgba(18, 18, 18, .7); color: #fff; font-size: 12px; font-weight: 600; pointer-events: none; }
+.pvmute { position: absolute; right: 12px; bottom: 12px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(18, 18, 18, .7); color: #fff; pointer-events: none; }
+.pvmute svg { width: 15px; height: 15px; }
+.ig .pvact { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px 12px 6px; }
+.ig .pvact .l { display: flex; gap: 14px; }
+.ig .pvact .r { justify-self: end; }
+.ig .pvlikes { flex: none; padding: 0 14px; font-weight: 600; }
+.ig .pvcap { flex: none; margin: 4px 14px 0; }
+.ig .pvmeta, .ig .pvtime { flex: none; color: var(--mut); }
+.ig .pvmeta { padding: 6px 14px 0; }
+.ig .pvtime { padding: 4px 14px; font-size: 11px; }
+/* the tab bar stays at the bottom over the feed, which runs on under it */
+.ig .pvtabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; justify-content: space-around; align-items: center; height: 62px; padding-bottom: 12px; border-top: 1px solid var(--sep); background: var(--bg); }
+.ig .pvtabs .pvav { width: 26px; height: 26px; font-size: 12px; }
+/* YouTube: a community post with images, opened from the channel */
+.phone.yt { --fg: #0f0f0f; --mut: #606060; --sep: #e5e5e5; --tag: #065fd4; font-family: Roboto, Arial, sans-serif; }
+:root[data-theme="dark"] .phone.yt { --bg: #0f0f0f; --fg: #f1f1f1; --mut: #aaa; --sep: #3f3f3f; --tag: #3ea6ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .phone.yt { --bg: #0f0f0f; --fg: #f1f1f1; --mut: #aaa; --sep: #3f3f3f; --tag: #3ea6ff; } }
+.yt .pvtop { flex: none; display: flex; align-items: center; gap: 22px; height: 48px; padding: 0 14px; font-size: 18px; font-weight: 500; }
+.yt .pvhead { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px 4px 14px; }
+.yt .pvhead .pvav { width: 38px; height: 38px; }
+.yt .pvhead > span:nth-child(2) { flex: 1; display: flex; gap: 6px; align-items: baseline; font-size: 13px; }
+.yt .pvhead b { font-weight: 500; }
+.yt .pvhead i { font-style: normal; color: var(--mut); font-size: 12px; }
+.yt .pvcap { flex: none; margin: 0 14px 0 64px; -webkit-line-clamp: 4; font-size: 14px; line-height: 1.43; }
+.yt .pvcap .tag { font-weight: 400; }
+.yt .pvmore { color: var(--fg); font-weight: 500; }
+.yt .pvmedia { position: relative; flex: none; margin: 10px 14px 0 64px; border-radius: 12px; overflow: hidden; background: #000; }
+.yt .pvmedia .pvtrack { position: absolute; inset: 0; }
+.yt .pvdots { flex: none; margin: 8px 0 0 64px; }
+.yt .pvdots i.on { background: var(--fg); }
+.yt .pvact { flex: none; display: flex; align-items: center; gap: 18px; padding: 6px 14px 0 58px; font-size: 12px; color: var(--fg); }
+.yt .pvact span { display: flex; align-items: center; gap: 6px; padding: 6px; }
+.yt .pvact svg { width: 20px; height: 20px; }
+.yt .pvtabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; justify-content: space-around; align-items: center; height: 64px; padding-bottom: 14px; border-top: 1px solid var(--sep); background: var(--bg); font-size: 10px; }
+.yt .pvtabs > span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.yt .pvtabs .pvav { width: 24px; height: 24px; font-size: 11px; }
+/* TikTok: the For You feed in photo mode */
+.tt .pvscreen { position: relative; flex: 1; min-height: 0; }
+.tt .pvscreen .pvtrack { position: absolute; inset: 0; }
+.tt .pvslide { background: #000; }
+.tttop { position: absolute; top: 6px; left: 0; right: 0; z-index: 2; display: flex; justify-content: center; gap: 20px; font-size: 16px; font-weight: 600; color: rgba(255, 255, 255, .65); text-shadow: 0 1px 2px rgba(0, 0, 0, .4); pointer-events: none; }
+.tttop b { position: relative; color: #fff; }
+.tttop b::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: #fff; }
+.tttop svg { position: absolute; right: 14px; top: -1px; color: #fff; }
+.tttext { position: absolute; left: 8%; right: 20%; top: 36%; z-index: 1; margin: 0; text-align: center; color: #fff; font-size: 19px; font-weight: 700; line-height: 1.25; white-space: pre-wrap;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 6px rgba(0, 0, 0, .5); pointer-events: none; }
+.ttrail { position: absolute; right: 6px; bottom: 92px; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #fff; font-size: 12px; font-weight: 600; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); pointer-events: none; }
+.ttrail span { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.ttrail svg { width: 34px; height: 34px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+.ttrail .pvav { position: relative; width: 46px; height: 46px; margin-bottom: 8px; border: 1.5px solid #fff; background: #555; font-size: 18px; }
+.ttrail .pvav::after { content: "+"; position: absolute; left: 50%; bottom: -10px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: #fe2c55; font: 700 16px/20px sans-serif; text-align: center; }
+.ttinfo { position: absolute; left: 12px; right: 76px; bottom: 22px; z-index: 2; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
+.ttinfo > b { font-size: 15px; font-weight: 700; }
+.tt .pvcap { margin-top: 4px; }
+.tt .pvcap .tag { font-weight: 700; }
+.tt .pvmore { color: #fff; font-weight: 700; background: none; padding-left: 6px; text-shadow: inherit; }
+.ttsound { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; white-space: nowrap; overflow: hidden; }
+.ttsound svg { width: 14px; height: 14px; }
+.tt .pvdots { position: absolute; left: 0; right: 0; bottom: 8px; z-index: 2; pointer-events: none; }
+.tt .pvdots i { background: rgba(255, 255, 255, .4); }
+.tt .pvdots i.on { background: #fff; }
+.ttnav { flex: none; display: flex; justify-content: space-around; align-items: center; height: 64px; padding-bottom: 14px; border-top: 1px solid #222; font-size: 10px; }
+.ttnav span { display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: .65; }
+.ttnav span.on { opacity: 1; }
+.ttnav .plus { width: 44px; height: 29px; border-radius: 8px; background: #fff; color: #000; display: grid; place-items: center; opacity: 1; box-shadow: -3px 0 0 #25f4ee, 3px 0 0 #fe2c55; }
 /* the animatic: a storyboard's stills one after another for their seconds, the shot's words under the picture */
 .anim { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.86); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
 .anim[hidden] { display: none; }
@@ -436,7 +540,12 @@ button { cursor: pointer; }
 
     <section id="setView" hidden>
       <div class="setbar" id="setBar" hidden><button class="btn solid" id="b-anim">Play animatic</button><span class="meta" id="animLen"></span></div>
+      <div class="setbar" id="pvBar" hidden>
+        <span class="seg" role="group" aria-label="View"><button id="b-grid" aria-pressed="true">Slides</button><button id="b-pv" aria-pressed="false">Post preview</button></span>
+        <span class="seg" id="pvCaps" role="group" aria-label="Caption shown" hidden></span>
+      </div>
       <div class="items" id="items"></div>
+      <div class="pvwrap" id="pvWrap" hidden><div class="phone" id="pv"></div></div>
     </section>
     <div class="anim" id="anim" hidden role="dialog" aria-label="Animatic">
       <img id="animImg" alt="">
@@ -1392,7 +1501,7 @@ button { cursor: pointer; }
   }
   // A note's time comes from the cut's video, or in a set from the picked clip item's own video (issue 13): From and
   // To, In and Out, i and o and typed times work on whichever one the note is on. Whole cut / Whole clip drops it.
-  const clipVid = () => { const it = curItem(); return it && it.kind === "clip" ? itemCards.get(it.name)?.vid || null : null; };
+  const clipVid = () => { const it = curItem(); return it && it.kind === "clip" ? cardOf(it.name)?.vid || null : null; };
   const timed = () => (entryOf(S.sel)?.kind === "cut" || !!clipVid()) && !$("general").checked;
   const stampNow = () => { const c = clipVid(); return c ? c.currentTime || 0 : nowT(); };
   const stampDur = () => { const c = clipVid(); return !c ? dur() : isFinite(c.duration) && c.duration > 0 ? c.duration : Infinity; };
@@ -1578,7 +1687,7 @@ button { cursor: pointer; }
     return w > 0 && h > 0 ? { x, y, w, h } : null;
   };
   // the picture's box inside a W×H element showing an aw×ah picture with object-fit: contain
-  const fit = (W, H, aw, ah) => { const k = Math.min(W / aw, H / ah), w = aw * k, h = ah * k; return { left: (W - w) / 2, top: (H - h) / 2, w, h }; };
+  const fit = (W, H, aw, ah, cover) => { const k = (cover ? Math.max : Math.min)(W / aw, H / ah), w = aw * k, h = ah * k; return { left: (W - w) / 2, top: (H - h) / 2, w, h }; };
   // where the picture sits in the stage; read once and kept until the video, its source or the stage is resized
   let pic = null;
   function picture() {
@@ -1593,7 +1702,7 @@ button { cursor: pointer; }
     return e?.kind === "set" && S.item ? (e.items || []).find((it) => it.name === S.item) || null : null;
   };
   const regionable = () => { const e = entryOf(S.sel); if (S.viewV) return false; return e?.kind === "cut" || (e?.kind === "set" && !!curItem() && curItem().kind === "still"); };
-  const itemRegions = (name) => itemCards.get(name)?.rg || null;
+  const itemRegions = (name) => cardOf(name)?.rg || null;
   // the overlay a region is drawn on: the video's, or the picked still's
   const surface = () => (entryOf(S.sel)?.kind === "set" ? itemRegions(curItem()?.name) : $("regions"));
   function setDrawing(on) {
@@ -1635,13 +1744,13 @@ button { cursor: pointer; }
   // where a slide's picture sits in its card (a still's or a clip's own size, letterboxed; the card's box until known)
   function itemPicture(x) {
     const m = x.media, [aw, ah] = x.img ? [x.img.naturalWidth, x.img.naturalHeight] : x.vid ? [x.vid.videoWidth, x.vid.videoHeight] : [0, 0];
-    return aw ? fit(m.clientWidth, m.clientHeight, aw, ah) : { left: 0, top: 0, w: m.clientWidth, h: m.clientHeight };
+    return aw ? fit(m.clientWidth, m.clientHeight, aw, ah, x.cover) : { left: 0, top: 0, w: m.clientWidth, h: m.clientHeight };
   }
   function renderRegions() {
     const e = entryOf(S.sel), box = $("regions");
     if (e?.kind === "set") {
       box.hidden = true; delete box.dataset.key; shownKey = "";
-      for (const [name, x] of itemCards) {
+      for (const [name, x] of pvOn() ? pvSlides : itemCards) {
         if (!x.rg) continue;
         const p = itemPicture(x);
         const shown = notesForSel().filter((n) => n.item === name && reg(n.region) && (n.id === S.focus || S.viewV || unresolved(n)));
@@ -1850,11 +1959,12 @@ button { cursor: pointer; }
   function focusNote(n) {
     S.focus = n.id;
     if (n.item && entryOf(S.sel)?.kind === "set") {   // a note on a set's clip: that clip goes to the note's time
-      const v = itemCards.get(n.item)?.vid;
+      const v = cardOf(n.item)?.vid;
       if (v && n.t != null) { v.pause(); v.currentTime = Math.max(0, +n.t); }
     } else if (n.t != null) seek(n.t, true); else vid.pause();
     for (const [id, x] of noteCards) x.card.classList.toggle("focus", id === n.id);
     if (n.item) itemCards.get(n.item)?.card.scrollIntoView({ block: "nearest", behavior: glide() });
+    if (n.item && pvOn()) pvGo(n.item, true);
     renderRegions();
   }
   // note cards are kept by id and rebuilt only when their note changes, so a take that is playing keeps playing
@@ -2031,6 +2141,13 @@ button { cursor: pointer; }
   // none picked ("Whole set") a note is on the whole set (item null) and there is no box to draw.
   let itemsSig = "";
   const itemCards = new Map();
+  // the post preview's slides, shaped like itemCards' entries ({media, img, rg, vid}; cover: the picture fills its
+  // slide, cropped, as Instagram shows it). With the preview on, a slide's boxes, clip and drawing are the preview's
+  const pvSlides = new Map();
+  const pv = { on: (() => { try { return localStorage.getItem("cr-pv") === "1"; } catch (err) { return false; } })(), sig: "", cap: null, names: [], i: -1, track: null, parts: null, settle: 0 };
+  const PV_PLATFORMS = { instagram: true, tiktok: true, youtube: true };
+  const pvOn = () => pv.on && !!PV_PLATFORMS[entryOf(S.sel)?.platform];
+  const cardOf = (name) => (pvOn() && pvSlides.get(name)) || itemCards.get(name);
   // a cut and its storyboard point at each other (a storyboard whose video isn't made yet says so); a storyboard
   // gets its animatic bar
   function renderBoard(e) {
@@ -2137,6 +2254,7 @@ button { cursor: pointer; }
     }
     if (S.item && !itemCards.has(S.item)) { S.item = null; notePlaceholder(); }   // the item left the set
     sel.value = S.item || "";
+    renderPreview(e);
     renderRegions();
   }
   let pageInputAt = -1e9;
@@ -2162,10 +2280,183 @@ button { cursor: pointer; }
       S.stampT = clipVid()?.currentTime || 0;
     }
     for (const [n, x] of itemCards) setAttr(x.card, "aria-current", String(n === name));
-    notePlaceholder(); updateStamp(); renderRegions();
+    notePlaceholder(); updateStamp();
+    if (entryOf(S.sel)?.kind === "set") renderPreview(entryOf(S.sel), true);
+    renderRegions();
   }
   $("itemSel").onchange = (ev) => pickItem(ev.target.value || null);
   if (window.ResizeObserver) new ResizeObserver(() => renderRegions()).observe($("items"));
+
+  // ---------- post preview: a carousel on a phone as the Instagram or TikTok app shows it (per viewer). A swipe, the
+  // arrows or the dots pick the slide shown, so a note goes on it; boxes draw and show on it; a tap on the caption (or
+  // its chip, when there are several to choose from) picks that caption
+  const ICON = {
+    heart: "M12 20.3s-7.6-4.6-9.2-9.4C1.6 7.4 3.8 4.2 7.1 4.2c2 0 3.6 1.1 4.9 2.8 1.3-1.7 2.9-2.8 4.9-2.8 3.3 0 5.5 3.2 4.3 6.7-1.6 4.8-9.2 9.4-9.2 9.4z",
+    chat: "M20.6 16.9A9.4 9.4 0 1 0 17 20.5l4.8 1.4z",
+    send: "M21.6 2.6 2.6 9.2l7.9 3.4 3.5 8zM21.6 2.6 10.5 12.6",
+    save: "M19 21.2l-7-6-7 6V2.8h14z",
+    back: "M15 5l-7 7 7 7",
+    next: "M9 5l7 7-7 7",
+    more: "M5 12h.01M12 12h.01M19 12h.01",
+    home: "M3 10.4 12 3l9 7.4V21h-6v-6H9v6H3z",
+    search: "M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15zM16 16l5 5",
+    plus: "M4 3.5h16a.5.5 0 0 1 .5.5v16a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5zM12 7.5v9M7.5 12h9",
+    reels: "M4 3.5h16a.5.5 0 0 1 .5.5v16a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5zM3.5 8.5h17M9 3.5l3 5M15 3.5l3 5M10 12v5.5l4.6-2.7z",
+    friends: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.8c2 .6 3.5 2.4 3.5 5.2",
+    inbox: "M4 4h16v13H9l-5 3.5z",
+    user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5",
+    note: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+    share: "M13.5 4.2 21.6 12l-8.1 7.8v-4.4c-6 0-9.1 1.9-11.1 5.4.8-6.3 4.4-10.6 11.1-11.5z",
+    mute: "M3 9h4l5-4v14l-5-4H3zM16 9.5l5 5M21 9.5l-5 5",
+    like: "M7.5 10.5V20.5H3.5V10.5zM7.5 10.5l4-7c1.6 0 2.6 1.3 2.3 2.9l-.6 3.1h5.6c1.3 0 2.2 1.2 1.9 2.4l-1.8 7.2c-.2.9-1 1.4-1.9 1.4H7.5",
+    vmore: "M12 5h.01M12 12h.01M12 19h.01",
+    shorts: "M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM10 9v6l5-3z",
+    subs: "M4 8h16v12H4zM6 5h12M8 2.5h8M10.5 11v6l5-3z",
+    signal: "M2 17h3v3H2zM7 14h3v6H7zM12 10.5h3V20h-3zM17 7h3v13h-3z",
+    battery: "M3 8h16v8H3zM21 10.5v3",
+  };
+  const icon = (name, fill, size = 24) => {
+    const s = sv("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: fill ? "currentColor" : "none", stroke: fill ? "none" : "currentColor",
+      "stroke-width": name === "more" || name === "vmore" ? 3 : 1.9, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
+    s.append(sv("path", name === "dislike" ? { d: ICON.like, transform: "rotate(180 12 12)" } : { d: ICON[name] })); return s;
+  };
+  const withIcon = (name, label, fill) => { const s = el("span"); s.append(icon(name, fill)); if (label) s.append(el("span", null, label)); return s; };
+  function pvBuild(e, slides) {
+    const phone = $("pv"), ig = e.platform === "instagram", yt = e.platform === "youtube", acct = String(e.account || "your_account").replace(/^@/, ""), initial = acct[0].toUpperCase();
+    phone.className = "phone " + (ig ? "ig" : yt ? "yt" : "tt"); phone.replaceChildren(); pvSlides.clear();
+    pv.names = slides.map((it) => it.name); pv.i = -1;
+    const track = pv.track = el("div", "pvtrack");
+    for (const it of slides) {
+      const slide = el("div", "pvslide"); slide.dataset.item = it.name;
+      let img = null, vid = null, rg = null;
+      if (it.kind === "clip") {
+        vid = el("video"); vid.src = it.url; vid.muted = vid.loop = vid.playsInline = vid.autoplay = true;
+        for (const type of ["timeupdate", "seeked", "pause"]) vid.addEventListener(type, () => clipFollow(vid));
+        slide.append(vid);
+        if (ig) { const m = el("span", "pvmute"); m.append(icon("mute")); slide.append(m); }
+      } else {
+        img = el("img"); img.src = it.url; img.alt = it.name; img.decoding = "async"; img.draggable = false;
+        img.addEventListener("load", () => renderRegions());
+        rg = el("div", "regions"); rg.dataset.item = it.name; rg.setAttribute("aria-hidden", "true");
+        wireRegions(rg); dragToDraw(img, rg, () => true, () => pickItem(it.name));
+        slide.append(img, rg);
+      }
+      if (!ig && !yt && it.text) slide.append(el("p", "tttext", it.text));   // TikTok draws a photo's words over it
+      slide.addEventListener("click", () => { if (performance.now() - drewAt > 400 && S.item !== it.name) pickItem(it.name); });
+      track.append(slide);
+      pvSlides.set(it.name, { media: slide, img, rg, vid, cover: ig || yt });
+    }
+    track.addEventListener("scroll", () => {
+      const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+      if (i !== pv.i) pvIndex(i);
+      clearTimeout(pv.settle);   // once the swipe settles, the slide shown is the one picked
+      pv.settle = setTimeout(() => { const name = pv.names[pv.i]; if (name && S.item !== name) pickItem(name); }, 140);
+    }, { passive: true });
+    const arrow = (side) => { const b = el("button", "pvarrow " + side); b.append(icon(side === "l" ? "back" : "next", false, 16)); b.setAttribute("aria-label", side === "l" ? "Previous slide" : "Next slide");
+      b.onclick = (ev) => { ev.stopPropagation(); const name = pv.names[pv.i + (side === "l" ? -1 : 1)]; if (name) pickItem(name); }; return b; };
+    const prev = arrow("l"), next = arrow("r"), dots = el("span", "pvdots"), cap = el("div", "pvcap");
+    dots.append(...slides.map(() => el("i")));
+    const status = el("div", "pvstatus"), bars = el("span"); bars.append(icon("signal", true, 17), icon("battery", false, 22)); status.append(el("span", null, "9:41"), bars);
+    let count = null;
+    if (ig) {
+      const top = el("div", "pvtop"); top.append(icon("back"), el("span", null, "Posts"), el("span"));
+      const head = el("div", "pvhead"); head.append(el("span", "pvav", initial), el("b", null, acct), icon("more"));
+      const media = el("div", "pvmedia"), [w, h] = ratio(e.aspect || "4:5");
+      media.style.aspectRatio = String(Math.min(1.91, Math.max(0.8, w / h)));   // Instagram keeps a carousel between 4:5 and 1.91:1
+      count = el("span", "pvcount"); media.append(track, count, prev, next);
+      const act = el("div", "pvact"), l = el("span", "l"), r = el("span", "r");
+      l.append(icon("heart"), icon("chat"), icon("send")); r.append(icon("save")); act.append(l, dots, r);
+      const tabs = el("div", "pvtabs"); tabs.append(icon("home"), icon("search"), icon("plus"), icon("reels"), el("span", "pvav", initial));
+      phone.append(status, top, head, media, act, el("div", "pvlikes", "1,284 likes"), cap, el("div", "pvmeta", "View all 48 comments"), el("div", "pvtime", "2 hours ago"), tabs);
+    } else if (yt) {
+      const top = el("div", "pvtop"); top.append(icon("back"), el("span", null, "Post"));
+      const head = el("div", "pvhead"), who = el("span"); who.append(el("b", null, "@" + acct), el("i", null, "2 days ago"));
+      head.append(el("span", "pvav", initial), who, icon("vmore", false, 20));
+      const media = el("div", "pvmedia"), [w, h] = ratio(e.aspect || "1:1");
+      media.style.aspectRatio = String(Math.min(1.91, Math.max(0.8, w / h)));
+      count = el("span", "pvcount"); media.append(track, count, prev, next);
+      const act = el("div", "pvact");
+      act.append(withIcon("like", "1.2K"), withIcon("dislike"), withIcon("chat", "48"), withIcon("share"));
+      const tabs = el("div", "pvtabs"), you = el("span"); you.append(el("span", "pvav", initial), el("span", null, "You"));
+      const plus = el("span"); plus.append(icon("plus", false, 34));
+      tabs.append(withIcon("home", "Home"), withIcon("shorts", "Shorts"), plus, withIcon("subs", "Subscriptions"), you);
+      phone.append(status, top, head, cap, media, dots, act, tabs);
+    } else {
+      const screen = el("div", "pvscreen"), top = el("div", "tttop"), rail = el("div", "ttrail"), info = el("div", "ttinfo"), sound = el("div", "ttsound");
+      top.append(el("span", null, "Following"), el("b", null, "For You"), icon("search"));
+      rail.append(el("span", "pvav", initial), withIcon("heart", "12.4K", true), withIcon("chat", "340", true), withIcon("save", "1,024", true), withIcon("share", "210", true));
+      sound.append(icon("note"), el("span", null, "original sound - " + acct));
+      info.append(el("b", null, acct), cap, sound);
+      screen.append(track, prev, next, top, rail, info, dots);
+      const nav = el("div", "ttnav"), plus = el("span", "plus"); plus.append(icon("plus", false, 18));
+      const home = withIcon("home", "Home"); home.className = "on";
+      nav.append(home, withIcon("friends", "Friends"), plus, withIcon("inbox", "Inbox"), withIcon("user", "Profile"));
+      phone.append(status, screen, nav);
+    }
+    pv.parts = { ig, yt, acct, count, dots, cap, prev, next };
+  }
+  // the slide shown: its counter, dot and arrows
+  function pvIndex(i) {
+    const n = pv.names.length, { count, dots, prev, next } = pv.parts;
+    pv.i = Math.max(0, Math.min(n - 1, i));
+    if (count) { setText(count, (pv.i + 1) + "/" + n); count.hidden = n < 2; }
+    [...dots.children].forEach((d, k) => d.classList.toggle("on", k === pv.i));
+    dots.hidden = n < 2; prev.hidden = pv.i <= 0; next.hidden = pv.i >= n - 1;
+  }
+  function pvGo(name, smooth) {
+    const i = pv.names.indexOf(name), t = pv.track;
+    if (i < 0 || !t) return;
+    const left = i * t.clientWidth;
+    if (Math.abs(t.scrollLeft - left) > 1) t.scrollTo({ left, behavior: smooth ? glide() : "instant" });
+    pvIndex(i);
+  }
+  // the caption shown: the picked one, else the last one chosen, else the first; @handles and #tags as the app shows them
+  function pvCaption(c) {
+    const box = pv.parts.cap, key = c ? c.name + "\n" + c.text : "";
+    box.classList.toggle("picked", !!c && S.item === c.name);
+    if (box.dataset.key === key) return;
+    box.dataset.key = key; box.classList.remove("open"); box.replaceChildren();
+    if (!c) return;
+    if (pv.parts.ig) box.append(el("b", null, pv.parts.acct), " ");
+    for (const part of String(c.text).split(/([#@][\p{L}\p{N}_.]+)/u)) if (part) box.append(/^[#@]/.test(part) ? el("span", "tag", part) : part);
+    const more = el("button", "pvmore", pv.parts.ig ? "… more" : pv.parts.yt ? "Read more" : "more");
+    more.onclick = (ev) => { ev.stopPropagation(); box.classList.add("open"); more.remove(); };
+    box.append(more);
+    requestAnimationFrame(() => { more.hidden = box.scrollHeight <= box.clientHeight + 1; });
+    box.onclick = () => { pv.cap = c.name; pickItem(c.name); };
+  }
+  // go: bring the picked slide into view (a pick, a new build); a snapshot leaves a swipe in progress alone
+  function renderPreview(e, go) {
+    const ok = !!PV_PLATFORMS[e.platform], on = ok && pv.on;
+    $("pvBar").hidden = !ok;
+    setAttr($("b-grid"), "aria-pressed", String(!on)); setAttr($("b-pv"), "aria-pressed", String(on));
+    $("items").hidden = on; $("pvWrap").hidden = !on;
+    const items = e.items || [], slides = items.filter((it) => it.kind !== "text"), caps = items.filter((it) => it.kind === "text");
+    const capName = [S.item, pv.cap].find((n) => n && caps.some((c) => c.name === n)) || caps[0]?.name || null;
+    const chips = $("pvCaps"), csig = caps.map((c) => c.name).join("\n");
+    chips.hidden = !on || caps.length < 2;
+    if (chips.dataset.sig !== csig) {
+      chips.dataset.sig = csig;
+      chips.replaceChildren(...caps.map((c) => { const b = el("button", null, c.name); b.onclick = () => { pv.cap = c.name; pickItem(c.name); }; return b; }));
+    }
+    for (const b of chips.children) setAttr(b, "aria-pressed", String(b.textContent === capName));
+    if (!on) { if (pv.sig) { pv.sig = ""; pv.track = null; pvSlides.clear(); $("pv").replaceChildren(); } return; }
+    const sig = JSON.stringify([e.key, e.platform, e.account, e.aspect, slides]);
+    if (sig !== pv.sig) { pv.sig = sig; pvBuild(e, slides); go = true; }
+    pvCaption(caps.find((c) => c.name === capName));
+    if (pv.i < 0) pvIndex(0);
+    if (go && S.item && pv.names.includes(S.item)) pvGo(S.item, pv.i >= 0);
+  }
+  function pvSet(on) {
+    pv.on = on; try { localStorage.setItem("cr-pv", on ? "1" : "0"); } catch (err) {}
+    if (S.drawing) setDrawing(false);
+    for (const [, x] of itemCards) if (x.vid) { if (on) x.vid.pause(); else x.vid.play().catch(() => {}); }   // one copy of each clip plays
+    const e = entryOf(S.sel);
+    if (e?.kind === "set") { renderPreview(e, true); renderRegions(); }
+  }
+  $("b-grid").onclick = () => pvSet(false);
+  $("b-pv").onclick = () => pvSet(true);
+  if (window.ResizeObserver) new ResizeObserver(() => { if (pv.track && pv.i >= 0) pv.track.scrollLeft = pv.i * pv.track.clientWidth; renderRegions(); }).observe($("pv"));
 
   // ---------- data
   function onWriteError(err) {

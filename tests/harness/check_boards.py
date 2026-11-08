@@ -99,6 +99,47 @@ with sync_playwright() as p:
     pg.select_option("#ovSel", ""); pg.wait_for_timeout(200)
     check("off removes them", pg.locator(".ov").count() == 0)
 
+    # the post preview: each platform's app on a phone; a swipe or the arrows pick the slide shown, notes and boxes go on it
+    pg.goto(BASE + "#carousel"); pg.wait_for_function("document.querySelectorAll('#items .item').length > 0")
+    check("a carousel offers Slides and Post preview, slides first", not J("document.getElementById('pvBar').hidden")
+          and J("document.getElementById('b-grid').getAttribute('aria-pressed')") == "true" and J("document.getElementById('pvWrap').hidden"))
+    pg.click("#b-pv"); pg.wait_for_function("document.querySelectorAll('#pv .pvslide').length === 4")
+    check("Instagram: the post with its handle, counter and caption", J("document.getElementById('pv').className") == "phone ig"
+          and J("document.querySelector('#pv .pvhead b').textContent") == "notebook.app" and J("document.querySelector('#pv .pvcount').textContent") == "1/4"
+          and J("document.querySelector('#pv .pvcap').textContent").startswith("notebook.app Your notes") and J("document.getElementById('items').hidden"))
+    pg.click("#pv .pvarrow.r"); pg.wait_for_function("document.getElementById('itemSel').value === '02-product'", timeout=4000)
+    check("the arrow moves to the next slide and picks it", J("document.querySelector('#pv .pvcount').textContent") == "2/4")
+    pg.evaluate("(() => { const t = document.querySelector('#pv .pvtrack'); t.scrollTo({ left: t.clientWidth * 2, behavior: 'instant' }); })()")
+    pg.wait_for_function("document.getElementById('itemSel').value === '03-date'", timeout=4000)
+    check("a swipe picks the slide it settles on", J("document.querySelector('#pv .pvcount').textContent") == "3/4")
+    ib = pg.locator("#pv .pvslide").nth(2).bounding_box()
+    pg.mouse.move(ib["x"] + ib["width"] * .3, ib["y"] + ib["height"] * .3); pg.mouse.down()
+    for i in range(8): pg.mouse.move(ib["x"] + ib["width"] * (.3 + .3 * i / 7), ib["y"] + ib["height"] * (.3 + .2 * i / 7))
+    pg.mouse.up(); pg.wait_for_timeout(300)
+    check("a box can be drawn on the slide in the preview", pg.locator("#pv .pvslide").nth(2).locator(".box.draft").count() == 1)
+    pg.locator("#noteText").fill("Crop is too tight here"); pg.keyboard.press("Enter")
+    pg.wait_for_function("Object.values(window.__store.notes).some((n) => n.text === 'Crop is too tight here')")
+    n = [x for x in J("Object.values(window.__store.notes)") if x["text"] == "Crop is too tight here"]
+    check("…and the note is on that slide with its box", len(n) == 1 and n[0]["item"] == "03-date" and n[0]["region"] is not None)
+    pg.wait_for_timeout(200)
+    check("…which then shows on the preview", pg.locator("#pv .pvslide").nth(2).locator(".box.open").count() == 1)
+    pg.click("#pv .pvcap"); pg.wait_for_timeout(200)
+    check("tapping the caption picks it", J("document.getElementById('itemSel').value") == "Caption" and J("document.querySelector('#pv .pvcap').classList.contains('picked')"))
+    pg.goto(BASE + "#tiktok-photos"); pg.wait_for_function("document.querySelectorAll('#pv .pvslide').length === 3")
+    check("TikTok: remembered, the For You feed with the slide's words over the photo", J("document.getElementById('pv').className") == "phone tt"
+          and "Your notes, but they answer back" in J("document.querySelector('#pv .tttext').textContent") and pg.locator("#pv .ttrail svg").count() == 4)
+    pg.locator("#pvCaps button").nth(1).click(); pg.wait_for_timeout(200)
+    check("with two captions, a chip shows and picks each", not J("document.getElementById('pvCaps').hidden") and J("document.getElementById('itemSel').value") == "Caption B"
+          and J("document.querySelector('#pv .pvcap').textContent").startswith(J("window.__store.sets['tiktok-photos'].items.find((i) => i.name === 'Caption B').text")[:20]) and J("document.querySelectorAll('#pvCaps [aria-pressed=true]').length") == 1)
+    pg.goto(BASE + "#youtube-post"); pg.wait_for_function("document.querySelectorAll('#pv .pvslide').length === 3")
+    check("YouTube: a post with its text above the images", J("document.getElementById('pv').className") == "phone yt"
+          and J("document.querySelector('#pv .pvhead b').textContent") == "@notebook.app"
+          and J("document.querySelector('#pv .pvcap').compareDocumentPosition(document.querySelector('#pv .pvmedia')) & 4") == 4)
+    ph = J("(() => { const r = document.getElementById('pv').getBoundingClientRect(); return [r.left, r.right, document.documentElement.scrollWidth, innerWidth]; })()")
+    check(f"the phone fits the page with no sideways scroll ({ph})", ph[0] >= 0 and ph[1] <= ph[3] and ph[2] <= ph[3])
+    pg.click("#b-grid"); pg.wait_for_timeout(200)
+    check("Slides goes back to the grid", not J("document.getElementById('items').hidden") and J("document.getElementById('pvWrap').hidden") and pg.locator("#pv .pvslide").count() == 0)
+
     check(f"no page errors ({errs[:2]})", not errs)
     b.close()
 
