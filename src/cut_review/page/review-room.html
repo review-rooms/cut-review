@@ -427,6 +427,33 @@ button { cursor: pointer; }
 .anim .prog i { display: block; height: 100%; width: 0; background: #fff; }
 .item .cap { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12px; }
 .item[aria-current="true"] { outline: 2px solid var(--open); }
+/* a storyboard: a board sheet. Numbered panels, a ruled frame per shot, its words in labelled fields under it */
+.items.board { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 26px 20px; padding: 20px 20px 24px; margin-bottom: 24px;
+  background: var(--panel); border: 1px solid var(--line3); border-radius: 2px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.items.board.tall { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+@media (max-width: 600px) { .items.board { padding: 14px; gap: 20px 12px; } .items.board.tall { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.board .item { background: none; border: 0; border-radius: 0; overflow: visible; content-visibility: visible; }
+.board .item[aria-current="true"] { outline: none; }
+.board .item .cap { order: -1; padding: 0 0 7px; font-size: 13px; }
+.board .ptitle { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 500; }
+.board .ptitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .pnum { flex: none; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; display: inline-grid; place-items: center;
+  background: var(--ink); color: var(--panel); font: 600 12px/1 var(--mono); border-radius: 3px; }
+.board .plen { margin-left: auto; color: var(--muted); }
+.board .item .cap .ghost { padding: 2px 8px; }
+.board .item .media { background: #fbfaf6; box-shadow: 0 0 0 1.5px var(--ink); }
+.board .item[aria-current="true"] .media { box-shadow: 0 0 0 1.5px var(--ink), 0 0 0 5px var(--open); }
+.board .itext { display: grid; gap: 7px; padding: 10px 0 0; white-space: normal; color: var(--ink); }
+.board .fld { display: grid; gap: 1px; padding-top: 6px; border-top: 1px solid var(--line); }
+.board .fld:first-child { border-top: 0; padding-top: 0; }
+.board .fld b { font: 600 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.board .fld span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sbtl { flex: 1 0 100%; display: flex; gap: 2px; height: 46px; min-width: 0; overflow-x: auto; }
+.sbtl[hidden] { display: none; }
+.sbtl .seg { position: relative; flex: 1 1 0; min-width: 26px; padding: 0; border: 1px solid var(--line3); border-radius: 2px; overflow: hidden; background: #fbfaf6; cursor: pointer; }
+.sbtl .seg img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .85; }
+.sbtl .seg b { position: absolute; left: 3px; top: 3px; min-width: 15px; padding: 0 3px; box-sizing: border-box; background: var(--ink); color: var(--panel); font: 600 10px/15px var(--mono); border-radius: 2px; text-align: center; }
+.sbtl .seg[aria-current="true"] { border-color: var(--open); box-shadow: inset 0 0 0 2px var(--open); }
 
 .banner { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
 .banner.warn { border-color: var(--fixed-line); background: var(--fixed-soft); color: var(--fixed); }
@@ -539,7 +566,7 @@ button { cursor: pointer; }
     <p class="why" id="why"></p>
 
     <section id="setView" hidden>
-      <div class="setbar" id="setBar" hidden><button class="btn solid" id="b-anim">Play animatic</button><span class="meta" id="animLen"></span></div>
+      <div class="setbar" id="setBar" hidden><button class="btn solid" id="b-anim">Play animatic</button><span class="meta" id="animLen"></span><div class="sbtl" id="sbTl" role="group" aria-label="Shots by length"></div></div>
       <div class="setbar" id="pvBar" hidden>
         <span class="seg" role="group" aria-label="View"><button id="b-grid" aria-pressed="true">Slides</button><button id="b-pv" aria-pressed="false">Post preview</button></span>
         <span class="seg" id="pvCaps" role="group" aria-label="Caption shown" hidden></span>
@@ -2187,13 +2214,38 @@ button { cursor: pointer; }
   $("animNext").onclick = () => animShow(Math.min(anim.shots.length - 1, anim.i + 1));
   $("animClose").onclick = animStop;
   $("animNote").onclick = () => { const it = anim.shots[anim.i]; animStop(); if (it) { pickItem(it.name); itemCards.get(it.name)?.card.scrollIntoView({ block: "nearest" }); $("noteText").focus(); } };
+  // a shot's words as a board sheet shows them: "VO: …", "SFX: …" lines under their label, the rest is the action
+  const FIELD = /^(VO|V\.O\.|Voice-over|Dialogue|SFX|Sound|Music|Camera|Cam|Shot|Text|On screen|Note|Action)\s*:\s*/i;
+  function shotFields(text) {
+    const out = [];
+    for (const line of String(text).split("\n")) {
+      if (!line.trim()) continue;
+      const m = line.match(FIELD), label = m ? m[1].replace(/^(V\.O\.|Voice-over)$/i, "VO").replace(/^Cam$/i, "Camera") : "Action";
+      const last = out[out.length - 1], words = m ? line.slice(m[0].length) : line;
+      if (last && last.label.toLowerCase() === label.toLowerCase()) last.text += "\n" + words; else out.push({ label, text: words });
+    }
+    return out;
+  }
   function renderItems(e) {
-    const box = $("items"), sel = $("itemSel");
+    const box = $("items"), sel = $("itemSel"), board = !!e.storyboardFor;
     const sig = JSON.stringify([e.key, e.aspect, e.items || []]);
     if (sig !== itemsSig) {
       itemsSig = sig; itemCards.clear();
-      box.replaceChildren(); sel.replaceChildren();
+      box.replaceChildren(); sel.replaceChildren(); box.classList.toggle("board", board);
+      const tl = $("sbTl"), shots = shotsOf(e), total = shots.reduce((a, it) => a + (Math.max(0.5, +it.seconds || 2)), 0);
+      tl.replaceChildren();
+      if (board) shots.forEach((it, k) => {   // the timeline: each shot as wide as its seconds, as an animatic lays them out
+        const s = el("button", "seg"); s.dataset.item = it.name; s.style.flexGrow = String(Math.max(0.5, +it.seconds || 2));
+        s.title = it.name + (it.seconds ? " · " + it.seconds + " s" : ""); s.setAttribute("aria-label", s.title);
+        const im = el("img"); im.src = it.url; im.alt = ""; im.loading = "lazy"; im.draggable = false;
+        s.append(im, el("b", null, String(k + 1)));
+        s.onclick = () => { pickItem(it.name); itemCards.get(it.name)?.card.scrollIntoView({ block: "nearest", behavior: glide() }); };
+        tl.append(s);
+      });
+      tl.hidden = !board || total <= 0;
+      let shotNo = 0;
       const [w, h] = ratio(e.aspect || "4:5");
+      box.classList.toggle("tall", board && w < h);   // a tall frame takes a narrower panel
       const whole = el("option", null, "Whole set"); whole.value = ""; sel.append(whole);
       for (const it of e.items || []) {
         const o = el("option", null, it.name); o.value = it.name; sel.append(o);
@@ -2229,12 +2281,24 @@ button { cursor: pointer; }
           media.append(i, rg);
         }
         const cap = el("div", "cap"), count = el("span", "count");
-        cap.append(el("span", "mono", it.name + ({ clip: " · clip", text: " · caption" }[it.kind] || "") + (it.seconds ? " · " + it.seconds + " s" : "")), count);
+        if (board && it.kind === "still") {   // a board panel's header: its number, its name, its length
+          const n = ++shotNo, named = !new RegExp("^shot\\s*" + n + "$", "i").test(it.name);
+          const t = el("span", "ptitle"); t.append(el("b", "pnum", String(n)));
+          if (named) t.append(el("span", null, it.name));
+          cap.append(t, el("span", "mono plen", it.seconds ? it.seconds + " s" : ""), count);
+          if (!named) t.title = it.name;
+        }
+        else cap.append(el("span", "mono", it.name + ({ clip: " · clip", text: " · caption" }[it.kind] || "") + (it.seconds ? " · " + it.seconds + " s" : "")), count);
         const b = el("button", "ghost", "Note");
         b.onclick = (ev) => { ev.stopPropagation(); pickItem(it.name); $("noteText").focus(); };
         cap.append(b);
         if (media) card.append(media);
-        if (it.text) card.append(el("p", "itext", it.text));   // a shot's voice-over and action, a slide's words, a caption
+        if (it.text && board && it.kind === "still") {   // a shot's words in labelled fields, as on a board sheet
+          const f = el("div", "itext");
+          for (const x of shotFields(it.text)) { const d = el("div", "fld"); d.append(el("b", null, x.label), el("span", null, x.text)); f.append(d); }
+          card.append(f);
+        }
+        else if (it.text) card.append(el("p", "itext", it.text));   // a slide's words, a caption
         card.append(cap);
         // a tap picks or unpicks; not on the clip's video (its own taps pick, above), and not the click that ends
         // drawing a box
@@ -2252,6 +2316,7 @@ button { cursor: pointer; }
       setCls(x.count, "count" + (open ? " open" : ""));
       setText(x.count, open ? String(open) : "");
     }
+    for (const x of $("sbTl").children) setAttr(x, "aria-current", String(S.item === x.dataset.item));
     if (S.item && !itemCards.has(S.item)) { S.item = null; notePlaceholder(); }   // the item left the set
     sel.value = S.item || "";
     renderPreview(e);
@@ -2280,6 +2345,7 @@ button { cursor: pointer; }
       S.stampT = clipVid()?.currentTime || 0;
     }
     for (const [n, x] of itemCards) setAttr(x.card, "aria-current", String(n === name));
+    for (const x of $("sbTl").children) setAttr(x, "aria-current", String(x.dataset.item === name));
     notePlaceholder(); updateStamp();
     if (entryOf(S.sel)?.kind === "set") renderPreview(entryOf(S.sel), true);
     renderRegions();

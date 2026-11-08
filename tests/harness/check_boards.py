@@ -32,6 +32,18 @@ with sync_playwright() as p:
     check("a storyboard says what it is", J("document.getElementById('meta').textContent").startswith("Storyboard · 4 shots"))
     check("each shot shows its voice-over and seconds", pg.locator("#items .itext").count() == 4
           and "2.5 s" in J("document.querySelector('#items .item .cap').textContent"))
+    # a board sheet: numbered panels, the words in labelled fields ("VO: …" under VO, the rest under Action)
+    check("panels are numbered on a board sheet", J("document.getElementById('items').classList.contains('board')")
+          and J("[...document.querySelectorAll('#items .pnum')].map(b => b.textContent).join()") == "1,2,3,4")
+    check("a shot's words sit under VO and Action", J("[...document.querySelectorAll('#items .item')[0].querySelectorAll('.fld')].map(f => f.firstChild.textContent + ':' + f.lastChild.textContent)")
+          == ['VO:"What if your notes could answer back?"', "Action:Close-up: a hand writes in a notebook."])
+    # the timeline: each shot as wide as its seconds; a tap picks the shot and marks it
+    segs = J("[...document.querySelectorAll('#sbTl .seg')].map(s => Math.round(s.getBoundingClientRect().width))")
+    check("the timeline has a segment per shot, sized by seconds", len(segs) == 4 and segs[2] > segs[1] and not J("document.getElementById('sbTl').hidden"))
+    pg.click("#sbTl .seg:nth-child(3)"); pg.wait_for_timeout(150)
+    check("tapping a timeline segment picks that shot", J("document.getElementById('itemSel').value") == "Shot 3"
+          and J("document.querySelector('#sbTl .seg[aria-current=\"true\"]')?.dataset.item") == "Shot 3")
+    pg.click("#sbTl .seg:nth-child(3)"); pg.wait_for_timeout(100); J("document.getElementById('itemSel').value = ''; document.getElementById('itemSel').dispatchEvent(new Event('change'))")
     board = J("[document.getElementById('b-board').hidden, document.getElementById('b-board').textContent, document.getElementById('b-board').disabled]")
     check("no video yet: said, not a link", board == [False, "No video yet", True])
     # the animatic: the shots one after another for their seconds, words under the picture; keys drive it

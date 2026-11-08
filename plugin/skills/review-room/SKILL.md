@@ -70,7 +70,8 @@ video they already answered for.
 A storyboard is a set that points at its cut: `{"key": "<cut>-board", "storyboardFor": "<cut key>", "group": …,
 "aspect": <the video's>, "items": [{"file": "board/shot-1.png", "name": "Shot 1", "seconds": 2.5, "text": "VO: …\nWhat we
 see: …"}]}`. One still per shot (render it the way the video will be made: code, a frame of the 3D scene, or a
-generated image; rough is fine), `text` is the shot's voice-over and action, `seconds` its length in the animatic.
+generated image; rough is fine), `text` is the shot's voice-over and action, one per line (`VO: …`, `SFX: …`, `Camera: …`; an unlabelled line is the
+action): the room shows them as labelled fields under the panel. `seconds` is its length in the animatic and the timeline.
 The cut can stay without `file` while only its storyboard exists: it joins the room with its first video. The owner
 plays the storyboard as an animatic, boxes and notes single shots, and approves it like any set. Apply its notes
 like a cut's (redraw the shots, `cut-review build`), and once it is approved with no unresolved notes, make the video

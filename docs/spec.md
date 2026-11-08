@@ -133,8 +133,11 @@ input or state that is not valid JSON or not the expected shape (an upload resul
 
 ### 1a. Storyboards, carousels and safe zones (the page)
 
-A set with `storyboardFor` is a storyboard: its header says "Storyboard · N shots", each shot shows its words and
-seconds, **Play animatic** plays the shots for their seconds with the words under the picture (‹ › and arrow keys
+A set with `storyboardFor` is a storyboard: its header says "Storyboard · N shots"; the shots are laid out as a board
+sheet, numbered panels with a ruled frame, the seconds over each frame and its words under it in labelled fields (a line
+starting `VO:`, `SFX:`, `Music:`, `Camera:`, `Shot:`, `Text:`, `Dialogue:` or `Note:` goes under that label, any other
+line under Action); a timeline above the sheet shows each shot as wide as its seconds and a tap picks it.
+**Play animatic** plays the shots for their seconds with the words under the picture (‹ › and arrow keys
 step, Pause or `k`, **Note on this shot** closes it and picks the shot, Esc closes), and **Video →** opens the cut
 ("No video yet" while the cut has no video; `room.json` may list a cut without `file` while its storyboard exists, and
 `build` leaves it out until it has one, and `frames`, `carry --to` and `build --note` treat it as not in the room yet). A cut with a storyboard has a **Storyboard** button back. Notes, boxes,
