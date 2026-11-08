@@ -148,7 +148,8 @@ like room takes, with no downloads.
   rerun `cut-review fix` for those notes; for records, `cut-review build --all`.
 - `cut-review status` shows the link, pending uploads, each cut's version in the room and builds not yet written.
 - **`this room's page is older than this cut-review`** on stderr: run `cut-review page` and publish it to the url it
-  names, with the capabilities it names, before anything else, so the owner gets the newest page.
+  names, with the capabilities it names, then `cut-review link <url>` (that records it as published), before
+  anything else, so the owner gets the newest page.
 - The page is the same for every room. To update it after a cut-review upgrade, `cut-review page` and publish the
   file to the same `url` (omit `capabilities` and `icon`; they carry forward). A room published before the
   Download button has no `downloads` capability, so the button does nothing there: publish it once with the full

@@ -115,7 +115,7 @@ def _page_id(page: str) -> str:
 def cmd_page(a) -> int:
     room = Room.load(a.room)
     page = _template()
-    room.state["page"] = _page_id(page)   # which page this room was built from: older ones get a notice
+    room.state["pageBuilt"] = _page_id(page)   # `link` makes it the room's page once it is published
     room.save()
     title = html.escape(room.manifest.get("title") or "Cut Review Room")
     page = page.replace("<title>Cut Review Room</title>", f"<title>{title}</title>", 1)
@@ -134,6 +134,8 @@ def cmd_link(a) -> int:
     if not a.url.startswith("https://claude.ai/"):
         raise RoomError("expected a claude.ai artifact URL")
     room.state["artifact"] = a.url.split("#")[0]
+    if room.state.get("pageBuilt"):   # published: the room now has the page `cut-review page` last wrote
+        room.state["page"] = room.state["pageBuilt"]
     room.save()
     print(f"Linked {room.state['artifact']}")
     return 0
@@ -460,7 +462,8 @@ def _page_notice(folder: str) -> None:
         return
     if room.state.get("artifact") and room.state.get("page") != _page_id(_template()):
         print(f"cut-review: this room's page is older than this cut-review. Run `cut-review page`, then publish it with the "
-              f"Artifact tool to {room.state['artifact']} (same url) with capabilities {CAPABILITIES}.", file=sys.stderr)
+              f"Artifact tool to {room.state['artifact']} (same url) with capabilities {CAPABILITIES}, then "
+              f"`cut-review link {room.state['artifact']}`.", file=sys.stderr)
 
 
 if __name__ == "__main__":

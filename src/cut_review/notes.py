@@ -154,7 +154,9 @@ def attach_replies(notes: list[dict], replies: list[dict]) -> None:
     """Put each note's thread on it, oldest first: [{by, text, at}] (by is "claude" or the writer's user id)."""
     by_note: dict[str, list[dict]] = {}
     for r in sorted(replies, key=lambda r: str(r.get("at", ""))):
-        by_note.setdefault(str(r["note"]), []).append({"by": r.get("by"), "text": r["text"], "at": r.get("at")})
+        # only a reply `cut-review reply` wrote is Claude's: anyone who can write in the room can type by: "claude"
+        by = r.get("by") if r.get("by") != "claude" or "--claude-" in str(r.get("id")) else None
+        by_note.setdefault(str(r["note"]), []).append({"by": by, "text": r["text"], "at": r.get("at")})
     for n in notes:
         n["thread"] = by_note.get(n["id"], [])
 
@@ -168,7 +170,7 @@ def waiting(n: dict) -> bool:
 def reply_writes(room: Room, replies: dict[str, str]) -> list[dict]:
     """Set writes that add Claude's answer to each note's thread (a new `replies` document each)."""
     notes = {n["id"]: n for n in saved_notes(room)}
-    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    at = _now_iso()
     writes = []
     for i, (nid, text) in enumerate(replies.items()):
         n = notes.get(nid)
@@ -241,7 +243,7 @@ def todo(room: Room, notes: list[dict], show_all: bool = False) -> str:
             if n.get("reply"):
                 lines.append(f"  Claude: {n['reply']}")
             for r in n.get("thread") or []:
-                lines.append(f"  {'Claude' if r.get('by') == 'claude' else 'Owner'}: {r['text']}")
+                lines.append(f"  {'Claude' if r.get('by') == 'claude' else 'Reviewer'}: {r['text']}")
             i, script = script_line(n), scripts.get(key, [])
             if i is not None and i < len(script):
                 lines.append(f"  line: {marked_line(n, script[i].get('text', ''))}")
@@ -352,6 +354,12 @@ def confirmed(room: Room, key: str) -> dict:
     return (recs.get(f"cuts/{key}") or recs.get(f"sets/{key}") or {}).get("confirmed", {})
 
 
+def _now_iso() -> str:
+    """The time as the page writes it (Date.toISOString), so the two compare as strings."""
+    ms = time.time_ns() // 1_000_000
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ms // 1000)) + f".{ms % 1000:03d}Z"
+
+
 def _out_file(room: Room, doc_id: str) -> Path:
     return room.state_dir / "out" / f"notes__{doc_id}.json"
 
@@ -410,6 +418,6 @@ def carry_writes(room: Room, note_id: str, targets: list[str], text: str | None 
         data = {"cut": key, "text": words, "status": "open", "reply": "", "by": "claude",
                 "from": {"cut": src["cut"], "id": note_id}, "t": None, "tEnd": None, "region": None, "item": None,
                 "line": None, "quote": None, "qStart": None, "qEnd": None, "take": None,
-                "version": confirmed(room, key).get("version", 1), "createdAt": src.get("createdAt")}
+                "version": confirmed(room, key).get("version", 1), "createdAt": _now_iso()}   # now: undoes an older approval
         writes.append(_note_write(room, "set", f"{note_id}--{key}", data))
     return writes

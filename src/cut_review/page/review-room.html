@@ -541,7 +541,7 @@ button { cursor: pointer; }
   const unresolved = (n) => n.status === "open" || n.status === "fixed";
   const unresolvedOn = (key) => S.notes.filter((n) => n.cut === key && unresolved(n)).length;
   const approvedOn = (key) => { const v = S.verdicts[key];
-    return v?.state === "approved" && !S.notes.some((n) => n.cut === key && (unresolved(n) || String(n.createdAt) > String(v.at))); };
+    return v?.state === "approved" && !S.notes.some((n) => n.cut === key && (unresolved(n) || n.createdAt != null && String(n.createdAt) > String(v.at))); };
 
   // the cut list is built once per set of entries; a snapshot only updates its dots, counts and the tally
   let sideSig = "";
@@ -1760,7 +1760,7 @@ button { cursor: pointer; }
       top.insertBefore(b, top.querySelector(".st")); card.append(a);
     }
     if (n.reply) { const r = el("div", "reply"); r.append(el("b", null, "Claude: "), document.createTextNode(n.reply)); card.append(r); }
-    for (const x of repliesOf(n.id)) { const r = el("div", "reply"); r.append(el("b", null, whoOf(x.by) + ": "), document.createTextNode(x.text)); card.append(r); }
+    for (const x of repliesOf(n.id)) { const r = el("div", "reply"); r.append(el("b", null, whoOf(x.by === "claude" && !String(x.id).includes("--claude-") ? null : x.by) + ": "), document.createTextNode(x.text)); card.append(r); }
     if (writable && editing === "reply") card.append(noteBox(n, "reply"));
     const acts = el("div", "acts");
     if (writable && !editing) {
@@ -1807,6 +1807,7 @@ button { cursor: pointer; }
     box.append(ta, row);
     return box;
   }
+  // a reply is Claude's only when `cut-review reply` wrote it (its id says so): anyone who can write can type by: "claude"
   const whoOf = (by) => (by && by === S.me ? "You" : by === "claude" ? "Claude" : "Reviewer");
   // a note's thread: replies from the owner and Claude, oldest first, kept until the replies change
   let repliesBy = null;

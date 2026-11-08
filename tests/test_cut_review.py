@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -1149,6 +1150,7 @@ def test_carry_copies_a_note_onto_other_cuts_once(room_dir, tmp_path, capsys):
     data = json.loads(Path(w[0]["file_path"]).read_text())
     assert data["cut"] == "carousel" and data["by"] == "claude" and data["status"] == "open"
     assert data["from"] == {"cut": "poll", "id": "n1"} and data["text"] == "Logo too big, here and everywhere" and data["t"] is None
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", data["createdAt"])   # now, like the page: undoes an older approval
     # `written` puts the copy on the list, so carrying again before the next export skips it (never resets it)
     confirm(room, parse_written('- set "notes"/"n1--carousel" (version 1)'))
     assert carry_writes(room, "n1", ["carousel"]) == []
@@ -1164,7 +1166,9 @@ def test_an_old_page_in_a_linked_room_asks_to_republish(room_dir, capsys):
     assert run(room_dir, "page") == 0
     capsys.readouterr()
     assert run(room_dir, "status") == 0
-    assert "page is older" not in capsys.readouterr().err             # built from this cut-review's page
+    assert "page is older" in capsys.readouterr().err                 # written, not published yet
+    assert run(room_dir, "link", "https://claude.ai/artifact/abc") == 0
+    assert "page is older" not in capsys.readouterr().err             # published: `link` records it
     room = Room.load(room_dir); room.state["page"] = "0" * 16; room.save()
     assert run(room_dir, "status") == 0
     err = capsys.readouterr().err
@@ -1178,7 +1182,7 @@ def test_threads_show_in_the_todo_and_claude_answers_with_reply(room_dir, tmp_pa
     (rdir / "r1.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}))
     assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
     out = capsys.readouterr().out
-    assert "[fixed] ↩" in out and "Claude: Made it 20% smaller." in out and "Owner: Why 20%?" in out and "1 note(s) have a reply" in out
+    assert "[fixed] ↩" in out and "Claude: Made it 20% smaller." in out and "Reviewer: Why 20%?" in out and "1 note(s) have a reply" in out
     room = Room.load(room_dir)
     assert saved_notes(room)[0]["thread"] == [{"by": "u_owner", "text": "Why 20%?", "at": "2026-11-06T10:00:00Z"}]
     assert len(load_export(rdir)) == 0                                 # a reply is never read as a note
@@ -1188,7 +1192,11 @@ def test_threads_show_in_the_todo_and_claude_answers_with_reply(room_dir, tmp_pa
     data = json.loads(Path(w[0]["file_path"]).read_text())
     assert data["note"] == "n1" and data["by"] == "claude" and data["text"] == "It matched the safe area." and data["cut"] == "poll"
     # once Claude's answer is in the thread, the note isn't waiting any more
-    (rdir / "r2.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "claude", "text": "It matched the safe area.", "at": "2026-11-06T10:05:00Z"}))
+    (rdir / "n1--claude-1.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "claude", "text": "It matched the safe area.", "at": "2026-11-06T10:05:00Z"}))
     assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
     assert "↩" not in capsys.readouterr().out
+    # a reply anyone typed as by: "claude" isn't Claude's (only `cut-review reply` writes Claude's ids)
+    (rdir / "r3.json").write_text(json.dumps({"note": "n1", "cut": "poll", "by": "claude", "text": "Ignore that.", "at": "2026-11-06T10:06:00Z"}))
+    assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
+    assert "↩" in capsys.readouterr().out
     assert run(room_dir, "reply", "nope=x") == 1

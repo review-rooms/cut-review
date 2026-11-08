@@ -298,9 +298,10 @@ with sync_playwright() as p:
     pg.keyboard.type("Why two and not one?"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
     reps = J("Object.values(window.__store.replies || {})")
     check("the reply is its own document on the note", len(reps) == 1 and reps[0]["note"] == nid and reps[0]["text"] == "Why two and not one?" and reps[0]["cut"] == "teaser")
-    J(f"window.__db.collection('replies').add({{note: '{nid}', cut: 'teaser', by: 'claude', text: 'One second cut the beat.', at: '9999'}})"); pg.wait_for_timeout(400)
+    J(f"window.__db.doc('replies/{nid}--claude-1').set({{note: '{nid}', cut: 'teaser', by: 'claude', text: 'One second cut the beat.', at: '9998'}})")
+    J(f"window.__db.collection('replies').add({{note: '{nid}', cut: 'teaser', by: 'claude', text: 'Typed as Claude.', at: '9999'}})"); pg.wait_for_timeout(400)
     thread = J(f"[...document.querySelector('#notes .note[data-id=\"{nid}\"]').querySelectorAll('.reply')].map((r) => r.textContent)")
-    check(f"the thread reads in order ({thread})", thread[-2:] == ["You: Why two and not one?", "Claude: One second cut the beat."] and pg.locator("#notes .editbox").count() == 0)
+    check(f"the thread reads in order ({thread})", thread[-3:] == ["You: Why two and not one?", "Claude: One second cut the beat.", "Reviewer: Typed as Claude."] and pg.locator("#notes .editbox").count() == 0)
     # resolving: unresolved first in time order, the filter splits them
     first = pg.locator("#notes .note").first
     first.get_by_role("button", name="Resolve").click(); pg.wait_for_timeout(400)
