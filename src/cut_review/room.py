@@ -39,6 +39,9 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+PLATFORMS = ("instagram", "tiktok", "youtube")   # where a carousel is posted (shown in the room)
+
+
 def kind_of(path: str) -> str:
     """'clip' for a video file, 'still' for an image."""
     return "clip" if Path(path).suffix.lower() in VIDEO_EXT else "still"
@@ -119,10 +122,18 @@ class Room:
         return f"/_blob/{f['id']}" if f and f.get("id") else None
 
 
+def room_keys(manifest: dict) -> set[str]:
+    """The cuts and sets the room shows: every set, and every cut with a video (a storyboard-first cut joins later)."""
+    return {e["key"] for e in manifest.get("cuts", []) if e.get("file")} | {e["key"] for e in manifest.get("sets", [])}
+
+
 def set_items(room: Room, s: dict) -> list[dict]:
     """A set's items: listed explicitly (`items: [{name, file}]`) or every media file in `dir`, sorted by name."""
     if s.get("items"):
-        return [{"name": it.get("name") or Path(it["file"]).stem, "file": it["file"]} for it in s["items"]]
+        # `text` is what the item says (a storyboard shot's voice-over and action, a slide's words), `seconds` how
+        # long a storyboard shot lasts in its animatic
+        return [{"name": it.get("name") or Path(it["file"]).stem, "file": it["file"],
+                 **{k: it[k] for k in ("text", "seconds") if it.get(k) is not None}} for it in s["items"]]
     if s.get("dir"):
         d = room.abspath(s["dir"])
         if not d.is_dir():
@@ -136,6 +147,15 @@ def validate_manifest(m: dict) -> None:
     if not isinstance(m, dict):
         raise RoomError("room.json must be a JSON object")
     keys: set[str] = set()
+    cut_keys = {c.get("key") for c in m.get("cuts", []) if isinstance(c.get("key"), str)}
+    boarded = set()
+    for st in m.get("sets", []):
+        if st.get("storyboardFor") is not None:
+            if st["storyboardFor"] not in cut_keys:
+                raise RoomError(f"set {st.get('key')}: storyboardFor {st['storyboardFor']!r} is not a cut")
+            if st["storyboardFor"] in boarded:
+                raise RoomError(f"cut {st['storyboardFor']} has two storyboards (one set per cut has storyboardFor)")
+            boarded.add(st["storyboardFor"])
     for kind in ("cuts", "sets"):
         for i, e in enumerate(m.get(kind, [])):
             k = e.get("key")
@@ -146,7 +166,11 @@ def validate_manifest(m: dict) -> None:
             if k in keys:
                 raise RoomError(f"key {k!r} is used twice")
             keys.add(k)
-            if kind == "cuts" and not e.get("file"):
-                raise RoomError(f"cut {k} has no file")
+            if kind == "cuts" and not e.get("file") and k not in boarded:   # storyboard first: no video yet
+                raise RoomError(f"cut {k} has no file (and no storyboard set with storyboardFor: {k!r})")
             if kind == "sets" and not (e.get("items") or e.get("dir")):
                 raise RoomError(f"set {k} needs items or dir")
+            if kind == "sets" and e.get("platform") not in (None, *PLATFORMS):
+                raise RoomError(f"set {k}: platform must be one of {', '.join(PLATFORMS)}")
+            if kind == "sets" and not all(isinstance(c, dict) and c.get("text") for c in e.get("captions") or []):
+                raise RoomError(f"set {k}: captions are [{{label, text}}]")

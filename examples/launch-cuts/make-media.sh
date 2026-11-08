@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 out=renders
-mkdir -p "$out/carousel"
+mkdir -p "$out/carousel" "$out/board" "$out/tiktok"
 ff() { ffmpeg -v error -y "$@"; }
 
 # clip <file> <seconds> <WxH> <label> [silent]
@@ -24,4 +24,8 @@ still carousel/01-question.png 0x2b4c7e "1 · Question"
 still carousel/02-product.png 0x7e2b5a "2 · Product"
 still carousel/03-date.png 0x2b7e4c "3 · Date"
 ff -f lavfi -i "testsrc2=size=1080x1350:rate=30:duration=4" -c:v libx264 -pix_fmt yuv420p "$out/carousel/04-clip.mp4"
+tall() { ff -f lavfi -i "color=c=$2:size=1080x1920" -vf "drawtext=text='$3':fontsize=110:fontcolor=white:x=(w-tw)/2:y=(h-th)/2" -frames:v 1 "$out/$1"; }
+for i in 1 2 3 4; do tall "board/launch-$i.png" 0x333344 "Shot $i"; done
+for i in 1 2 3; do tall "board/teaser-$i.png" 0x443333 "Teaser $i"; done
+for i in 1 2 3; do tall "tiktok/0$i.png" 0x225566 "Slide $i"; done
 echo "Renders in $(pwd)/$out"
