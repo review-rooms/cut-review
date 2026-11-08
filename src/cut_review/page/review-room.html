@@ -918,7 +918,7 @@ button { cursor: pointer; }
     const c = $("composer"), row = S.line && !$("scriptCard").hidden && scriptRows[S.line.i]?.tr;
     const typing = document.activeElement === $("noteText");
     const r = row || S.drawing ? null : S.region && draftBox?.isConnected ? draftBox.getBoundingClientRect() : S.pin ? pinRect() : null;
-    const boxed = r && r.width && r.bottom > 0 && r.top < innerHeight;
+    const boxed = r && r.width && (r.onScreen ?? (r.bottom > 0 && r.top < innerHeight));
     if (row || boxed) {
       const host = row ? $("scriptBox") : document.body;
       if (c.parentNode !== host) host.append(c);
@@ -945,7 +945,8 @@ button { cursor: pointer; }
   // form follows it when the page scrolls
   function pinRect() {
     const b = S.pin.el.getBoundingClientRect(), x = b.left + S.pin.fx * b.width, y = b.top + S.pin.fy * b.height;
-    return { left: x - 16, top: y, bottom: y, width: 1 };
+    // on screen while the element is: a click at its very edge (fy 1 on the timeline's foot) still floats the form
+    return { left: x - 16, top: y, bottom: y, width: 1, onScreen: b.bottom > 0 && b.top < innerHeight };
   }
   function pinAt(ev, el, t) {
     if (S.viewV || !S.db || !S.canWrite || entryOf(S.sel)?.kind !== "cut") return;   // the browser's own menu, then

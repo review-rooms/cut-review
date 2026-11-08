@@ -226,11 +226,12 @@ with sync_playwright() as p:
     J("document.activeElement.blur()")
     pg.locator("#track").scroll_into_view_if_needed(); tb = pg.locator("#track").bounding_box()
     pg.mouse.click(tb["x"] + tb["width"] * .5, tb["y"] + tb["height"] / 2, button="right"); pg.wait_for_timeout(300)
-    cb = pg.locator("#composer").bounding_box()
-    check("right-click on the timeline opens the form there, at that time", J("document.getElementById('composer').classList.contains('pop')")
-          and J("document.activeElement.id") == "noteText" and J("document.getElementById('lineTargetN').textContent") == "At ·"
-          and J("document.getElementById('lineTargetQ').textContent").startswith("0:04") and (abs(cb["y"] - (tb["y"] + tb["height"] + 8)) < 3 or cb["y"] + cb["height"] <= tb["y"] + tb["height"] - 7)
-          and abs(J("document.getElementById('vid').currentTime") - 4) < .2)
+    cb = pg.locator("#composer").bounding_box(); tb2 = pg.locator("#track").bounding_box()
+    seen = dict(pop=J("document.getElementById('composer').classList.contains('pop')"), focus=J("document.activeElement.id"),
+                label=J("document.getElementById('lineTargetN').textContent + document.getElementById('lineTargetQ').textContent"),
+                form=round(cb["y"]), track=[round(tb["y"]), round(tb2["y"]), round(tb2["height"])], t=round(J("document.getElementById('vid').currentTime"), 2))
+    check(f"right-click on the timeline opens the form there, at that time ({seen})", seen["pop"] and seen["focus"] == "noteText" and seen["label"].startswith("At ·0:04")
+          and (abs(cb["y"] - (tb["y"] + tb["height"] + 8)) < 3 or cb["y"] + cb["height"] <= tb["y"] + tb["height"] - 7) and abs(seen["t"] - 4) < .2)
     pg.keyboard.type("Beat drops here"); pg.keyboard.press("Enter"); pg.wait_for_timeout(500)
     n = [x for x in store("notes") if x["text"] == "Beat drops here"]
     check("the note is at the right-clicked time", len(n) == 1 and 3.8 < n[0]["t"] < 4.2 and n[0]["tEnd"] is None
