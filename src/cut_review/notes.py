@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .room import Room, RoomError, kind_of, load_json, set_items
+from .room import Room, RoomError, kind_of, load_json, room_keys, set_items
 
 STATUSES = ("open", "fixed", "resolved", "wontfix")
 
@@ -310,7 +310,7 @@ def extract_frames(room: Room, notes: list[dict], width: int = 540,
     """
     if not shutil.which("ffmpeg"):
         raise RoomError("ffmpeg is not on PATH")
-    files = {c["key"]: room.abspath(c["file"]) for c in room.manifest.get("cuts", [])}
+    files = {c["key"]: room.abspath(c["file"]) for c in room.manifest.get("cuts", []) if c.get("file")}
     sets = {s["key"]: set_items(room, s) for s in room.manifest.get("sets", [])}
     stills = {(k, it["name"]): room.abspath(it["file"]) for k, items in sets.items() for it in items if kind_of(it["file"]) == "still"}
     outdir = room.state_dir / "frames"
@@ -403,7 +403,7 @@ def carry_writes(room: Room, note_id: str, targets: list[str], text: str | None 
     src = next((n for n in notes if n["id"] == note_id), None)
     if not src:
         raise RoomError(f"note {note_id} is not in the last export (run `cut-review notes DIR` again)")
-    keys = {e["key"] for e in room.manifest.get("cuts", []) + room.manifest.get("sets", [])}
+    keys = room_keys(room.manifest)
     have = {n["cut"] for n in notes if isinstance(n.get("from"), dict) and n["from"].get("id") == note_id}
     words = (text or src.get("text") or "").strip()
     if not words:
@@ -411,7 +411,7 @@ def carry_writes(room: Room, note_id: str, targets: list[str], text: str | None 
     writes = []
     for key in dict.fromkeys(targets):
         if key not in keys:
-            raise RoomError(f"{key} is not a cut or set in room.json")
+            raise RoomError(f"{key} is not a cut or set in the room (a cut joins once it has a video)")
         if key == src["cut"] or key in have:
             continue
         # the same fields the page's addNote writes

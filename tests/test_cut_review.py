@@ -519,7 +519,6 @@ def test_page_draws_and_saves_regions_on_set_stills(room_dir, capsys):
     assert "region: !S.region || (isSet && !curItem()) ? null : S.region" in html   # a set note keeps its region
     assert "region: isSet ||" not in html
     assert '$("b-region").hidden = !regionable()' in html                          # the button shows for a still
-    assert 'curItem().kind !== "clip"' in html                                      # but not for a clip item
     assert 'dragToDraw(i, rg, () => true, () => pickItem(it.name))' in html         # dragging on a still draws
     assert 'if (ev.key === "r") { ev.preventDefault(); if (!$("b-region").hidden)' in html  # r works on sets
     assert "innerHTML" not in html
@@ -988,7 +987,7 @@ def test_page_times_notes_on_a_picked_set_clip(room_dir, capsys):
     assert "t: tm ? Math.round(S.stampT * 100) / 100 : null" in html                 # and the note keeps its time
     assert "        t: isSet ||" not in html
     assert "S.stampT = stampNow(); S.stampLocked = true;" in html                    # In stamps the clip's time
-    assert "const v = itemCards.get(n.item)?.vid;" in html                           # a clip note seeks its clip
+    assert "const v = cardOf(n.item)?.vid;" in html                                  # a clip note seeks its clip (grid or preview)
     assert 'n.item + (span ? " · " + span : "")' in html                             # and shows its time
     assert "if (!S.item && !S.stampLocked && S.stampEnd == null)" in html            # paint() leaves a clip's stamp alone
     assert "innerHTML" not in html
@@ -1200,3 +1199,83 @@ def test_threads_show_in_the_todo_and_claude_answers_with_reply(room_dir, tmp_pa
     assert run(room_dir, "notes", str(notes), "--replies", str(rdir)) == 0
     assert "↩" in capsys.readouterr().out
     assert run(room_dir, "reply", "nope=x") == 1
+
+
+# ---------------------------------------------------------------- storyboards and carousels
+def _manifest(room_dir, change):
+    m = json.loads((room_dir / "room.json").read_text())
+    change(m)
+    (room_dir / "room.json").write_text(json.dumps(m))
+
+
+def test_a_storyboard_comes_before_its_video_and_links_to_it_after(room_dir, capsys):
+    # storyboard first: a cut with no video yet is fine while a set is its storyboard; the cut joins with its video
+    (room_dir / "media" / "board").mkdir()
+    (room_dir / "media" / "board" / "s1.png").write_bytes(b"shot")
+    def add(m):
+        m["cuts"].append({"key": "launch", "title": "Launch"})
+        m["sets"].append({"key": "launch-board", "storyboardFor": "launch", "items": [
+            {"file": "board/s1.png", "name": "Shot 1", "text": "VO: Meet it. A hand opens the lid.", "seconds": 2.5}]})
+    _manifest(room_dir, add)
+    (room_dir / "up.txt").write_text(upload_text(room_dir, {**ALL, "board/s1.png": "e" * 32}))
+    assert run(room_dir, "assets", str(room_dir / "up.txt")) == 0
+    recs, _ = rebuild(Room.load(room_dir))
+    assert "cuts/launch" not in recs
+    board = recs["sets/launch-board"]
+    assert board["storyboardFor"] == "launch"
+    assert board["items"] == [{"name": "Shot 1", "kind": "still", "url": "/_blob/" + "e" * 32, "text": "VO: Meet it. A hand opens the lid.", "seconds": 2.5}]
+    # until it has a video the cut is not in the room: frames skip it, notes can't be carried or noted onto it
+    room = Room.load(room_dir)
+    save_notes(room, [{"id": "n1", "cut": "poll", "t": 1.0, "text": "x", "status": "open"}])
+    if shutil.which("ffmpeg"):
+        assert extract_frames(room, []) == []          # a cut without a video doesn't break frames
+    with pytest.raises(RoomError, match="joins once it has a video"):
+        carry_writes(room, "n1", ["launch"])
+    assert run(room_dir, "build", "--note", "launch=first cut") == 1
+    _manifest(room_dir, lambda m: m["cuts"][1].update(file="poll.mp4"))
+    recs, _ = rebuild(Room.load(room_dir))
+    assert recs["cuts/launch"]["storyboard"] == "launch-board" and "storyboard" not in recs["cuts/poll"]
+
+
+def test_a_cut_without_video_needs_a_storyboard_and_storyboards_name_a_cut(room_dir):
+    _manifest(room_dir, lambda m: m["cuts"].append({"key": "later"}))
+    with pytest.raises(RoomError, match="no file"):
+        Room.load(room_dir)
+    _manifest(room_dir, lambda m: (m["cuts"].pop(), m["sets"][0].update(storyboardFor="nope")))
+    with pytest.raises(RoomError, match="storyboardFor 'nope' is not a cut"):
+        Room.load(room_dir)
+    _manifest(room_dir, lambda m: (m["sets"][0].pop("storyboardFor"), m["sets"][0].update(platform="myspace")))
+    with pytest.raises(RoomError, match="platform must be one of"):
+        Room.load(room_dir)
+    _manifest(room_dir, lambda m: m["sets"][0].update(platform="tiktok", account=["@me"]))
+    with pytest.raises(RoomError, match="account is the handle"):
+        Room.load(room_dir)
+    _manifest(room_dir, lambda m: (m["sets"][0].pop("account"), m["sets"][0].pop("platform"), m["sets"].extend([
+        {"key": "b1", "storyboardFor": "poll", "dir": "carousel"}, {"key": "b2", "storyboardFor": "poll", "dir": "carousel"}])))
+    with pytest.raises(RoomError, match="two storyboards"):
+        Room.load(room_dir)
+
+
+def test_a_caption_named_like_a_slide_is_refused(room_dir, capsys):
+    # notes and the page find an item by its name: a caption called like a slide would take that slide's notes
+    _manifest(room_dir, lambda m: m["sets"][0].update(captions=[{"label": "01-hook", "text": "Hi"}]))
+    uploaded(room_dir, capsys)
+    with pytest.raises(RoomError, match="two items are named '01-hook'"):
+        build_records(Room.load(room_dir), probe=NO_PROBE)
+
+
+def test_carousel_captions_are_text_items_and_rewording_is_a_new_version(room_dir, capsys):
+    _manifest(room_dir, lambda m: m["sets"][0].update(platform="instagram", account="notebook.app", captions=[{"label": "Caption A", "text": "Swipe →"}, {"text": "Save this"}]))
+    uploaded(room_dir, capsys)
+    room = Room.load(room_dir)
+    recs, _ = rebuild(room)
+    car = recs["sets/carousel"]
+    assert car["platform"] == "instagram" and car["account"] == "notebook.app"
+    assert car["items"][2:] == [{"name": "Caption A", "kind": "text", "text": "Swipe →"}, {"name": "Caption 2", "kind": "text", "text": "Save this"}]
+    written_all(room)
+    room.save()
+    assert rebuild(room)[0]["sets/carousel"]["version"] == 1                     # same words: same version
+    _manifest(room_dir, lambda m: m["sets"][0]["captions"][0].update(text="Swipe for the trick →"))
+    room = Room.load(room_dir)
+    car = rebuild(room)[0]["sets/carousel"]
+    assert car["version"] == 2 and car["changes"][-1] == {"v": 2, "note": "reworded"}   # words, not a re-render

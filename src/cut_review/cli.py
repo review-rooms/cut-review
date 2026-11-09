@@ -19,7 +19,7 @@ from . import __version__
 from .notes import attach_replies, carry_writes, extract_frames, fix_writes, load_export, reply_writes, save_notes, saved_notes, todo, where
 from .parse import parse_assets, parse_listed_versions, parse_written
 from .records import build_records, chunks, confirm, stage
-from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, sha256
+from .room import MANIFEST, MEDIA_EXT, VIDEO_EXT, Room, RoomError, load_json, room_keys, sha256
 from .takes import convert, local_file, open_script_notes, private_dir, raw_file, read_call, take_of, take_row, wav_name
 
 UPLOAD_BATCH = 25          # Artifact asset upload: at most 25 files per call
@@ -205,10 +205,10 @@ def cmd_build(a) -> int:
         if not sep or not text.strip():
             raise RoomError(f"--note needs KEY=TEXT, got {n!r}")
         notes[key] = text.strip()
-    keys = {e["key"] for e in room.manifest.get("cuts", []) + room.manifest.get("sets", [])}
+    keys = room_keys(room.manifest)
     unknown = sorted(set(notes) - keys)
     if unknown:
-        raise RoomError("--note for keys not in room.json: " + ", ".join(unknown))
+        raise RoomError("--note for keys not in the room (a cut joins once it has a video): " + ", ".join(unknown))
     records = build_records(room, notes)
     writes = stage(room, records, only_changed=not a.all)
     room.save()

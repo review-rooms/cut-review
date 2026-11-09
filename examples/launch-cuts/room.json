@@ -4,8 +4,18 @@
  "scriptLabel": "Voice-over script",
  "media": "renders",
  "groups": [
-  {"id": "video", "label": "Videos"},
-  {"id": "social", "label": "Social"}
+  {
+   "id": "boards",
+   "label": "Storyboards"
+  },
+  {
+   "id": "video",
+   "label": "Videos"
+  },
+  {
+   "id": "social",
+   "label": "Social"
+  }
  ],
  "cuts": [
   {
@@ -16,12 +26,26 @@
    "short": "Teaser",
    "group": "video",
    "aspect": "9:16",
-   "tags": ["Reels · Shorts"],
+   "tags": [
+    "Reels · Shorts"
+   ],
    "description": "Eight seconds: the question, the product, the date.",
    "script": [
-    {"from": 0.0, "to": 3.0, "text": "What if your notes could [pause] answer back?"},
-    {"from": 3.0, "to": 6.0, "text": "Meet the notebook that listens."},
-    {"from": 6.0, "to": 8.0, "text": "Out on the first of March."}
+    {
+     "from": 0.0,
+     "to": 3.0,
+     "text": "What if your notes could [pause] answer back?"
+    },
+    {
+     "from": 3.0,
+     "to": 6.0,
+     "text": "Meet the notebook that listens."
+    },
+    {
+     "from": 6.0,
+     "to": 8.0,
+     "text": "Out on the first of March."
+    }
    ]
   },
   {
@@ -32,15 +56,44 @@
    "short": "Explainer",
    "group": "video",
    "aspect": "16:9",
-   "tags": ["website", "YouTube"],
+   "tags": [
+    "website",
+    "YouTube"
+   ],
    "description": "Twelve seconds for the landing page, with a silent version for autoplay.",
    "videoLabel": "With sound",
-   "alts": [{"key": "silent", "label": "Silent", "file": "explainer.silent.mp4"}],
+   "alts": [
+    {
+     "key": "silent",
+     "label": "Silent",
+     "file": "explainer.silent.mp4"
+    }
+   ],
    "script": [
-    {"from": 0.0, "to": 4.0, "text": "Write anything. A list, a draft, a half-finished idea."},
-    {"from": 4.0, "to": 8.0, "text": "Ask it a question, and it finds the answer in your own words."},
-    {"from": 8.0, "to": 12.0, "text": "[warm] Your notes, finally useful."}
+    {
+     "from": 0.0,
+     "to": 4.0,
+     "text": "Write anything. A list, a draft, a half-finished idea."
+    },
+    {
+     "from": 4.0,
+     "to": 8.0,
+     "text": "Ask it a question, and it finds the answer in your own words."
+    },
+    {
+     "from": 8.0,
+     "to": 12.0,
+     "text": "[warm] Your notes, finally useful."
+    }
    ]
+  },
+  {
+   "key": "launch-film",
+   "title": "Launch film",
+   "short": "Launch film",
+   "group": "video",
+   "aspect": "9:16",
+   "description": "Storyboard first: the video is made once the storyboard is approved."
   }
  ],
  "sets": [
@@ -51,7 +104,146 @@
    "short": "Carousel",
    "group": "social",
    "aspect": "4:5",
-   "description": "Three stills and a short clip, in file-name order."
+   "description": "Three stills and a short clip, in file-name order.",
+   "platform": "instagram",
+   "account": "notebook.app",
+   "captions": [
+    {
+     "label": "Caption",
+     "text": "Your notes, but they answer back. Ask a question and get your own words back, with the page they came from. Out March 1st. #notes #productivity @notebook.app"
+    }
+   ]
+  },
+  {
+   "key": "launch-film-board",
+   "storyboardFor": "launch-film",
+   "title": "Launch film · storyboard",
+   "short": "Launch film board",
+   "group": "boards",
+   "aspect": "9:16",
+   "description": "Four shots, timed to the voice-over. Play the animatic, or comment on a shot.",
+   "items": [
+    {
+     "file": "board/launch-1.png",
+     "name": "Shot 1",
+     "seconds": 2.5,
+     "text": "VO: \"What if your notes could answer back?\"\nClose-up: a hand writes in a notebook."
+    },
+    {
+     "file": "board/launch-2.png",
+     "name": "Shot 2",
+     "seconds": 2,
+     "text": "VO: \"Meet the notebook that listens.\"\nThe page lights up; the logo slides in."
+    },
+    {
+     "file": "board/launch-3.png",
+     "name": "Shot 3",
+     "seconds": 3,
+     "text": "VO: \"Ask it anything.\"\nPhone in hand, a question typed, the answer appears."
+    },
+    {
+     "file": "board/launch-4.png",
+     "name": "Shot 4",
+     "seconds": 2,
+     "text": "VO: \"Out on the first of March.\"\nEnd card: date and link."
+    }
+   ]
+  },
+  {
+   "key": "teaser-board",
+   "storyboardFor": "teaser",
+   "title": "Teaser · storyboard",
+   "short": "Teaser board",
+   "group": "boards",
+   "aspect": "9:16",
+   "description": "The storyboard the teaser was made from.",
+   "items": [
+    {
+     "file": "board/teaser-1.png",
+     "name": "Shot 1",
+     "seconds": 3,
+     "text": "VO: \"What if your notes could answer back?\""
+    },
+    {
+     "file": "board/teaser-2.png",
+     "name": "Shot 2",
+     "seconds": 3,
+     "text": "VO: \"Meet the notebook that listens.\""
+    },
+    {
+     "file": "board/teaser-3.png",
+     "name": "Shot 3",
+     "seconds": 2,
+     "text": "VO: \"Out on the first of March.\""
+    }
+   ]
+  },
+  {
+   "key": "tiktok-photos",
+   "title": "TikTok photo carousel",
+   "short": "TikTok photos",
+   "group": "social",
+   "aspect": "9:16",
+   "platform": "tiktok",
+   "description": "Three slides with their on-slide words, and two captions to pick from.",
+   "items": [
+    {
+     "file": "tiktok/01.png",
+     "name": "Slide 1",
+     "text": "Your notes, but they answer back"
+    },
+    {
+     "file": "tiktok/02.png",
+     "name": "Slide 2",
+     "text": "Ask a question → get your own words back"
+    },
+    {
+     "file": "tiktok/03.png",
+     "name": "Slide 3",
+     "text": "Out March 1st"
+    }
+   ],
+   "captions": [
+    {
+     "label": "Caption A",
+     "text": "POV: your notebook finally listens 📓 #productivity"
+    },
+    {
+     "label": "Caption B",
+     "text": "I asked my notes a question and they answered. Out March 1."
+    }
+   ],
+   "account": "notebook.app"
+  },
+  {
+   "key": "youtube-post",
+   "title": "YouTube post",
+   "short": "YouTube post",
+   "group": "social",
+   "aspect": "1:1",
+   "platform": "youtube",
+   "account": "notebook.app",
+   "description": "A community post: three images and its text.",
+   "items": [
+    {
+     "file": "carousel/01-question.png",
+     "name": "Image 1"
+    },
+    {
+     "file": "carousel/02-product.png",
+     "name": "Image 2"
+    },
+    {
+     "file": "carousel/03-date.png",
+     "name": "Image 3"
+    }
+   ],
+   "captions": [
+    {
+     "label": "Post text",
+     "text": "Three things your notes can do now that they answer back. Which one would you use first? #notes"
+    }
+   ]
   }
  ]
 }

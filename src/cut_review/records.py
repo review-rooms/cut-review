@@ -71,7 +71,10 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
     out.append(("room", "meta", meta, []))
 
     order = 0
+    boards = {st["storyboardFor"]: st["key"] for st in m.get("sets", []) if st.get("storyboardFor")}
     for c in m.get("cuts", []):
+        if not c.get("file"):   # storyboard first: the cut joins the room with its first video
+            continue
         video, poster = room.asset_url(c["file"]), room.asset_url(c.get("poster"))
         alts = [{"key": alt["key"], "label": alt.get("label", alt["key"]), "video": room.asset_url(alt["file"])}
                 for alt in c.get("alts", [])]
@@ -89,6 +92,8 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
         }
         if history:   # left out while empty, so rooms built before history don't rewrite every record
             data["history"] = history
+        if c["key"] in boards:
+            data["storyboard"] = boards[c["key"]]
         if alts:
             data["alts"] = alts
             for k in ("videoLabel", "altDefault"):
@@ -98,16 +103,31 @@ def build_records(room: Room, notes: dict[str, str] | None = None, probe=probe_l
         order += 1
 
     for s in m.get("sets", []):
-        items = [{"name": it["name"], "kind": kind_of(it["file"]), "url": room.asset_url(it["file"])}
-                 for it in set_items(room, s)]
-        assets = [it["url"] for it in items]
-        version, changes, history = _versioned(room, f"sets/{s['key']}", assets, notes.get(s["key"]))
+        items = [{"name": it["name"], "kind": kind_of(it["file"]), "url": room.asset_url(it["file"]),
+                  **{k: v for k, v in it.items() if k not in ("name", "file")}} for it in set_items(room, s)]
+        # a post's captions are text items after the slides: picked, commented on and versioned like a slide
+        caps = s.get("captions") or []
+        items += [{"name": c.get("label") or ("Caption" if len(caps) == 1 else f"Caption {i + 1}"),
+                   "kind": "text", "text": c["text"]} for i, c in enumerate(caps)]
+        if s.get("storyboardFor") and any(it["kind"] != "still" for it in items):
+            raise RoomError(f"set {s['key']}: a storyboard's shots are stills (one image per shot)")
+        names = [it["name"] for it in items]
+        if len(set(names)) < len(names):   # notes, the item menu and the cards find an item by its name
+            raise RoomError(f"set {s['key']}: two items are named {next(n for n in names if names.count(n) > 1)!r}")
+        # what makes a new version: the files, and the words on slides and captions (rewording is a new version)
+        assets = [it["url"] for it in items if it.get("url")] + [it["text"] for it in items if it.get("text")]
+        conf = room.state["records"].get(f"sets/{s['key']}", {}).get("confirmed") or {}
+        same_files = [a for a in conf.get("assets") or [] if str(a).startswith("/_blob/")] == [it["url"] for it in items if it.get("url")]
+        version, changes, history = _versioned(room, f"sets/{s['key']}", assets, notes.get(s["key"]) or ("reworded" if conf and same_files else None))
         data = {
             "title": s.get("title", s["key"]), "short": s.get("short", s.get("title", s["key"])),
             "group": s.get("group", ""), "order": order, "aspect": s.get("aspect", "4:5"),
             "description": s.get("description", ""), "items": items,
             "version": version, "changes": changes,
         }
+        for k in ("platform", "storyboardFor", "account"):
+            if s.get(k):
+                data[k] = s[k]
         if history:
             data["history"] = history
         out.append(("sets", s["key"], data, assets))

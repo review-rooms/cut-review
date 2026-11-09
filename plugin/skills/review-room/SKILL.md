@@ -60,6 +60,33 @@ the room project next to the work that renders the videos; never commit `.cut-re
    The script under the picture follows the video: tap a word to comment on it (more taps or Shift-click take a span),
    select a few characters for just those, or press Comment for the whole line; the note opens right under the line.
 
+## Storyboard first, or straight to video
+
+Before you make a new video for a room, ask the owner (AskUserQuestion, one question per video or one for the batch):
+**storyboard first** (they approve the shots before any rendering: best for anything long, expensive or new) or
+**straight to video** (a quick variant of something approved). Don't decide for them, and don't ask again for a
+video they already answered for.
+
+A storyboard is a set that points at its cut: `{"key": "<cut>-board", "storyboardFor": "<cut key>", "group": …,
+"aspect": <the video's>, "items": [{"file": "board/shot-1.png", "name": "Shot 1", "seconds": 2.5, "text": "VO: …\nWhat we
+see: …"}]}`. One still per shot (render it the way the video will be made: code, a frame of the 3D scene, or a
+generated image; rough is fine), `text` is the shot's voice-over and action, one per line (`VO: …`, `SFX: …`, `Camera: …`; an unlabelled line is the
+action): the room shows them as labelled fields under the panel. `seconds` is its length in the animatic and the timeline.
+The cut can stay without `file` while only its storyboard exists: it joins the room with its first video. The owner
+plays the storyboard as an animatic, boxes and notes single shots, and approves it like any set. Apply its notes
+like a cut's (redraw the shots, `cut-review build`), and once it is approved with no unresolved notes, make the video
+from it, add `file` to the cut, build: the cut and its storyboard link to each other in the room.
+
+## Carousels
+
+A carousel is a set with `platform` (`instagram`, `tiktok` or `youtube`), its slides as `items` in order (stills, and
+for Instagram also clips: a mixed photo-and-video carousel), each with the words on it as `text`, and `captions`
+(`[{label, text}]`): the post caption, or several to choose from, and `account`: the handle the room's **Post preview** shows (the carousel on a phone as Instagram, TikTok or YouTube show it, where the owner swipes and comments). Each caption is an item the owner can comment on,
+and rewording one is a new version. Sizes: Instagram 4:5 (1080 × 1350, up to 20 slides), TikTok photo mode 9:16
+(1080 × 1920), YouTube posts 1:1 or 4:5. The room's **Safe zones** menu (each viewer's own, off by default) draws
+where each platform's buttons, caption and tabs sit, on the iPhone or Android status and navigation bars: check your
+slides and cuts against it before you hand them over, and keep text out of the red areas.
+
 ## Apply the owner's notes
 
 The owner may ask from the room itself: its **Ask Claude to apply N notes** button sends you
@@ -141,6 +168,14 @@ mounted read-only and that folder writable, port on `127.0.0.1` only. Give the o
 `http://localhost:8790`; it lists the open script notes and records one take per note into
 `.cut-review/takes/local/`. When they're done, stop the container and run `cut-review takes`: local takes convert
 like room takes, with no downloads.
+
+## The band above the prompt
+
+In a project with a `room.json`, the plugin shows a row above Claude Code's prompt: the room, its storyboards, cuts
+and carousels, the notes from the last `cut-review notes` (open, to check, replies to answer), and buttons that run
+this skill: **Apply N notes** (or **Check notes**), **Make <cut>** (a storyboard whose video isn't made yet),
+**New video** (asks storyboard first or straight to video), **Update room**, and **Open room**. A press arrives as
+`/cut-review:review-room <what to do>`: do that. **Hide** hides it for the session.
 
 ## When something is off
 

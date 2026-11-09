@@ -14,5 +14,6 @@
     "feedback",
     "artifact",
     "rendering"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }
