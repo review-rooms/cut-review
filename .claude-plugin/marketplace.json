@@ -12,7 +12,6 @@
       "name": "cut-review",
       "source": "./plugin",
       "description": "Review rooms for rendered videos: the owner pins notes to frames on claude.ai, Claude re-renders and answers them. Skill + CLI.",
-      "version": "0.1.0",
       "license": "MIT",
       "category": "productivity"
     }
